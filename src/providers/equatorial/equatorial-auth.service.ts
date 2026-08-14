@@ -57,6 +57,54 @@ export function findAccessToken(value: unknown): string | undefined {
   return undefined;
 }
 
+function decodeJwtPayload(token: string): unknown {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return undefined;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(
+      Buffer.from(normalized, 'base64').toString('utf8'),
+    ) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+export function findContractAccounts(token: string): string[] {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload !== 'object') return [];
+
+  const accounts: string[] = [];
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+
+    for (const [key, nested] of Object.entries(value)) {
+      if (key.toLowerCase() === 'contascontrato' && Array.isArray(nested)) {
+        for (const account of nested) {
+          if (!account || typeof account !== 'object') continue;
+          const record = account as Record<string, unknown>;
+          const number =
+            record.Numero ??
+            record.numero ??
+            record.numeroContaContrato ??
+            record.contaContrato;
+          if (typeof number === 'string' || typeof number === 'number') {
+            accounts.push(String(number));
+          }
+        }
+      }
+      visit(nested);
+    }
+  };
+
+  visit(payload);
+  return [...new Set(accounts)];
+}
+
 async function readTokenFromResponse(
   response: Response,
 ): Promise<string | undefined> {
@@ -363,6 +411,7 @@ export class EquatorialAuthService {
             cookieHeader: await buildCookieHeader(context),
             userAgent,
             portalOrigin: new URL(options.portalUrl).origin,
+            availableAccounts: findContractAccounts(token),
             requestJsonFromBrowser: async (url: string) => {
               // A API está em um subdomínio diferente do portal. A execução
               // nesta aba, já aberta na origem da API, evita o bloqueio CORS

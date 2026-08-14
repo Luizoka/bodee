@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   findAccessToken,
+  findContractAccounts,
   isLikelyJwt,
   resolveLoginMode,
 } from '../src/providers/equatorial/equatorial-auth.service';
@@ -17,6 +18,26 @@ describe('captura de token', () => {
   it('não aceita valores comuns como JWT', () => {
     expect(isLikelyJwt('token-curto')).toBe(false);
     expect(findAccessToken({ token: 'captcha-response' })).toBeUndefined();
+  });
+
+  it('lista as contas contrato presentes no payload do JWT', () => {
+    const payload = Buffer.from(
+      JSON.stringify({
+        userData: {
+          ContasContrato: [
+            { Numero: '000106375771' },
+            { Numero: '003014581358' },
+            { Numero: '000106375771' },
+          ],
+        },
+      }),
+    ).toString('base64url');
+    const token = `header.${payload}.signature`;
+
+    expect(findContractAccounts(token)).toEqual([
+      '000106375771',
+      '003014581358',
+    ]);
   });
 
   it('prioriza o formulário de data e reconhece o formulário OTP', () => {

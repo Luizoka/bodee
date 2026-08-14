@@ -35,6 +35,7 @@ export interface EquatorialAuthSession {
   cookieHeader: string;
   userAgent: string;
   portalOrigin: string;
+  availableAccounts: string[];
 }
 
 export interface BrowserHttpResponse {

@@ -4,41 +4,61 @@ import { resolve } from 'node:path';
 
 import { z } from 'zod';
 
-const schema = z.object({
-  EQUATORIAL_PORTAL_URL: z
-    .url()
-    .default('https://pa.equatorialenergia.com.br/siteantigo'),
-  EQUATORIAL_API_URL: z
-    .url()
-    .default('https://api-pa-cliente.equatorialenergia.com.br'),
-  EQUATORIAL_DOCUMENT: z.string().trim().min(1),
-  EQUATORIAL_BIRTH_DATE: z
-    .string()
-    .regex(/^\d{2}\/\d{2}\/\d{4}$/, 'use DD/MM/AAAA'),
-  EQUATORIAL_ACCOUNT: z.string().trim().min(1),
-  EQUATORIAL_COMPETENCE: z
-    .string()
-    .regex(/^\d{4}\/(0[1-9]|1[0-2])$/, 'use AAAA/MM'),
-  PLAYWRIGHT_HEADLESS: z
-    .enum(['true', 'false'])
-    .default('true')
-    .transform((value) => value === 'true'),
-  PLAYWRIGHT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
-  PLAYWRIGHT_BROWSER_CHANNEL: z
-    .enum(['chrome', 'chromium'])
-    .default('chromium'),
-  PLAYWRIGHT_PERSISTENT_CONTEXT: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
-  PLAYWRIGHT_USER_DATA_DIR: z
-    .string()
-    .trim()
-    .min(1)
-    .default('output/browser-profile'),
-  EQUATORIAL_API_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-  POC_OUTPUT_DIR: z.string().trim().min(1).default('output/equatorial'),
-});
+const schema = z
+  .object({
+    EQUATORIAL_PORTAL_URL: z
+      .url()
+      .default('https://pa.equatorialenergia.com.br/siteantigo'),
+    EQUATORIAL_API_URL: z
+      .url()
+      .default('https://api-pa-cliente.equatorialenergia.com.br'),
+    EQUATORIAL_DOCUMENT: z.string().trim().min(1),
+    EQUATORIAL_BIRTH_DATE: z
+      .string()
+      .regex(/^\d{2}\/\d{2}\/\d{4}$/, 'use DD/MM/AAAA'),
+    EQUATORIAL_ACCOUNT: z.string().trim().min(1).optional(),
+    EQUATORIAL_ACCOUNTS: z.string().trim().optional(),
+    EQUATORIAL_COMPETENCE: z
+      .string()
+      .regex(/^\d{4}\/(0[1-9]|1[0-2])$/, 'use AAAA/MM'),
+    PLAYWRIGHT_HEADLESS: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+    PLAYWRIGHT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    PLAYWRIGHT_BROWSER_CHANNEL: z
+      .enum(['chrome', 'chromium'])
+      .default('chromium'),
+    PLAYWRIGHT_PERSISTENT_CONTEXT: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    PLAYWRIGHT_USER_DATA_DIR: z
+      .string()
+      .trim()
+      .min(1)
+      .default('output/browser-profile'),
+    EQUATORIAL_API_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(30_000),
+    POC_OUTPUT_DIR: z.string().trim().min(1).default('output/equatorial'),
+  })
+  .superRefine((value, context) => {
+    const hasSingleAccount = Boolean(value.EQUATORIAL_ACCOUNT);
+    const hasMultipleAccounts = Boolean(
+      value.EQUATORIAL_ACCOUNTS?.split(',').some((item) => item.trim()),
+    );
+
+    if (!hasSingleAccount && !hasMultipleAccounts) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EQUATORIAL_ACCOUNT'],
+        message: 'informe EQUATORIAL_ACCOUNT ou EQUATORIAL_ACCOUNTS',
+      });
+    }
+  });
 
 export interface PocConfig {
   portalUrl: string;
@@ -46,6 +66,7 @@ export interface PocConfig {
   document: string;
   birthDate: string;
   account: string;
+  accounts: string[];
   competence: string;
   headless: boolean;
   browserTimeoutMs: number;
@@ -69,22 +90,41 @@ export function loadPocConfig(
   const result = schema.safeParse(environment);
 
   if (!result.success) {
-    const missingFields = result.error.issues
-      .map((issue) => issue.path.join('.'))
-      .filter(Boolean)
-      .join(', ');
+    const invalidVariables = [
+      ...new Set(
+        result.error.issues
+          .map((issue) => issue.path.join('.'))
+          .filter(Boolean),
+      ),
+    ];
 
-    throw new PocConfigurationError(missingFields.split(', ').filter(Boolean));
+    throw new PocConfigurationError(invalidVariables);
   }
 
   const value = result.data;
+  const accounts = value.EQUATORIAL_ACCOUNTS
+    ? [
+        ...new Set(
+          value.EQUATORIAL_ACCOUNTS.split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+        ),
+      ]
+    : value.EQUATORIAL_ACCOUNT
+      ? [value.EQUATORIAL_ACCOUNT]
+      : [];
+
+  if (accounts.length === 0) {
+    throw new PocConfigurationError(['EQUATORIAL_ACCOUNTS']);
+  }
 
   return {
     portalUrl: value.EQUATORIAL_PORTAL_URL,
     apiUrl: value.EQUATORIAL_API_URL,
     document: value.EQUATORIAL_DOCUMENT,
     birthDate: value.EQUATORIAL_BIRTH_DATE,
-    account: value.EQUATORIAL_ACCOUNT,
+    account: accounts[0] ?? '',
+    accounts,
     competence: value.EQUATORIAL_COMPETENCE,
     headless: value.PLAYWRIGHT_HEADLESS,
     browserTimeoutMs: value.PLAYWRIGHT_TIMEOUT_MS,

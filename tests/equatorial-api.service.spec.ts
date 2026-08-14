@@ -11,6 +11,7 @@ const testSession: EquatorialAuthSession = {
   cookieHeader: 'session=test-cookie',
   userAgent: 'fatura-sync-test',
   portalOrigin: 'https://portal.example.test',
+  availableAccounts: [],
 };
 
 describe('EquatorialApiService', () => {

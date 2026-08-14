@@ -70,57 +70,95 @@ async function run(): Promise<void> {
       },
     );
     logger.info('equatorial.auth.completed', { loginMode: session.loginMode });
+    logger.info('equatorial.accounts.available', {
+      accounts: session.availableAccounts,
+      count: session.availableAccounts.length,
+    });
 
-    const invoices = await api.listInvoices(
-      config.apiUrl,
-      session,
-      config.account,
-      config.apiTimeoutMs,
-    );
-    logger.info('equatorial.invoices.listed', { count: invoices.length });
+    let downloaded = 0;
+    let unavailable = 0;
+    let failed = 0;
 
-    let invoice: EquatorialInvoice;
-    try {
-      invoice = selectInvoiceByCompetence(invoices, config.competence);
-    } catch (error) {
-      if (
-        error instanceof EquatorialError &&
-        error.code === 'INVOICE_NOT_AVAILABLE'
-      ) {
-        logger.info('equatorial.invoices.available_competences', {
-          competences: listAvailableCompetences(invoices),
+    for (const [accountIndex, account] of config.accounts.entries()) {
+      try {
+        const invoices = await api.listInvoices(
+          config.apiUrl,
+          session,
+          account,
+          config.apiTimeoutMs,
+        );
+        logger.info('equatorial.invoices.listed', {
+          accountIndex: accountIndex + 1,
+          count: invoices.length,
         });
-        logger.info('equatorial.poc.waiting_invoice', {
-          competence: config.competence,
+
+        let invoice: EquatorialInvoice;
+        try {
+          invoice = selectInvoiceByCompetence(invoices, config.competence);
+        } catch (error) {
+          if (
+            error instanceof EquatorialError &&
+            error.code === 'INVOICE_NOT_AVAILABLE'
+          ) {
+            unavailable += 1;
+            logger.info('equatorial.poc.waiting_invoice', {
+              accountIndex: accountIndex + 1,
+              competence: config.competence,
+              availableCompetences: listAvailableCompetences(invoices),
+            });
+            continue;
+          }
+          throw error;
+        }
+        logger.info('equatorial.invoice.found', {
+          accountIndex: accountIndex + 1,
+          competence: invoice.competencia,
         });
-        return;
+
+        const base64 = await api.downloadInvoice(
+          config.apiUrl,
+          session,
+          account,
+          invoice.numeroFatura,
+          config.apiTimeoutMs,
+        );
+        const pdf = await pdfService.decodeAndValidate(base64);
+        const file = await pdfService.saveLocally(
+          pdf,
+          join(config.outputDirectory, account),
+          config.competence,
+        );
+
+        downloaded += 1;
+        logger.info('equatorial.poc.completed', {
+          accountIndex: accountIndex + 1,
+          file,
+          pageCount: pdf.pageCount,
+          size: pdf.size,
+          sha256: pdf.sha256,
+        });
+      } catch (error) {
+        failed += 1;
+        logger.error('equatorial.account.failed', {
+          accountIndex: accountIndex + 1,
+          errorCode:
+            error instanceof EquatorialError ? error.code : 'UNKNOWN_ERROR',
+          retryable: error instanceof EquatorialError ? error.retryable : true,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Falha inesperada ao processar a conta.',
+        });
       }
-      throw error;
     }
-    logger.info('equatorial.invoice.found', {
-      competence: invoice.competencia,
-    });
 
-    const base64 = await api.downloadInvoice(
-      config.apiUrl,
-      session,
-      config.account,
-      invoice.numeroFatura,
-      config.apiTimeoutMs,
-    );
-    const pdf = await pdfService.decodeAndValidate(base64);
-    const file = await pdfService.saveLocally(
-      pdf,
-      config.outputDirectory,
-      config.competence,
-    );
-
-    logger.info('equatorial.poc.completed', {
-      file,
-      pageCount: pdf.pageCount,
-      size: pdf.size,
-      sha256: pdf.sha256,
+    logger.info('equatorial.batch.completed', {
+      totalAccounts: config.accounts.length,
+      downloaded,
+      unavailable,
+      failed,
     });
+    if (failed > 0) process.exitCode = 1;
   } finally {
     await session?.close();
     await app.close();
