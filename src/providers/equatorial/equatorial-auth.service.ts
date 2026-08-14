@@ -453,7 +453,16 @@ export class EquatorialAuthService {
           };
         }
 
-        await page.waitForTimeout(250);
+        try {
+          await page.waitForTimeout(250);
+        } catch (error) {
+          throw new EquatorialError(
+            EquatorialErrorCode.PORTAL_UNAVAILABLE,
+            'A página do portal foi encerrada ou ficou indisponível durante o login.',
+            true,
+            { cause: error },
+          );
+        }
       }
 
       const diagnosticFile = await captureAuthFormDiagnostic(

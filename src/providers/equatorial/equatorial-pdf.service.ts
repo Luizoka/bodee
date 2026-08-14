@@ -70,18 +70,20 @@ export class EquatorialPdfService {
   async saveLocally(
     pdf: ValidatedPdf,
     outputDirectory: string,
+    account: string,
     competence: string,
   ): Promise<string> {
     const competenceDirectory = competence.replace('/', '-');
     const directory = join(outputDirectory, competenceDirectory);
-    const filename = `invoice-${pdf.sha256.slice(0, 12)}.pdf`;
+    const monthYear = competence.replace(/^(\d{4})\/(\d{2})$/, '$2$1');
+    const filename = `${account}_${monthYear}.pdf`;
     const target = join(directory, filename);
     const temporary = join(directory, `.${filename}.${randomUUID()}.tmp`);
 
     await mkdir(directory, { recursive: true });
 
-    // O nome contém o hash do conteúdo; portanto, se o mesmo PDF já foi
-    // salvo, não há motivo para sobrescrevê-lo.
+    // O caminho é estável por conta e competência; se já existe uma fatura
+    // para essa combinação, não há motivo para sobrescrevê-la.
     try {
       await access(target);
       return target;

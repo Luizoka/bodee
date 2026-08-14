@@ -1,0 +1,21 @@
+services:
+  - type: cron
+    name: fatura-sync
+    runtime: docker
+    schedule: "0 10 1 * *"
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: EQUATORIAL_DOCUMENT
+        sync: false
+      - key: EQUATORIAL_BIRTH_DATE
+        sync: false
+      - key: EQUATORIAL_ACCOUNTS
+        sync: false
+      - key: EQUATORIAL_COMPETENCE
+        sync: false
+      - key: PLAYWRIGHT_HEADLESS
+        value: "true"
+      - key: POC_OUTPUT_DIR
+        value: "/tmp/fatura-sync"

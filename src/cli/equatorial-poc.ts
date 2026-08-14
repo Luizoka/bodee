@@ -19,6 +19,7 @@ import {
 } from '../providers/equatorial/equatorial-invoice.service';
 import { EquatorialPdfService } from '../providers/equatorial/equatorial-pdf.service';
 import { PocLogger } from '../shared/logging/poc-logger';
+import { PostgresInvoiceRepository } from '../persistence/postgres-invoice.repository';
 
 async function run(): Promise<void> {
   const config = loadPocConfig();
@@ -27,11 +28,15 @@ async function run(): Promise<void> {
   });
   const logger = app.get(PocLogger);
   let session: ActiveEquatorialAuthSession | undefined;
+  const repository = config.databaseUrl
+    ? new PostgresInvoiceRepository(config.databaseUrl)
+    : undefined;
 
   try {
     const auth = app.get(EquatorialAuthService);
     const api = app.get(EquatorialApiService);
     const pdfService = app.get(EquatorialPdfService);
+    await repository?.initialize();
 
     logger.info('equatorial.poc.started', {
       portalUrl: config.portalUrl,
@@ -126,6 +131,7 @@ async function run(): Promise<void> {
         const file = await pdfService.saveLocally(
           pdf,
           join(config.outputDirectory, account),
+          account,
           config.competence,
         );
 
@@ -136,6 +142,13 @@ async function run(): Promise<void> {
           pageCount: pdf.pageCount,
           size: pdf.size,
           sha256: pdf.sha256,
+        });
+        await repository?.recordDownloaded({
+          account,
+          competence: config.competence,
+          filePath: file,
+          sha256: pdf.sha256,
+          status: 'DOWNLOADED',
         });
       } catch (error) {
         failed += 1;
@@ -161,6 +174,7 @@ async function run(): Promise<void> {
     if (failed > 0) process.exitCode = 1;
   } finally {
     await session?.close();
+    await repository?.close();
     await app.close();
   }
 }

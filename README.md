@@ -49,11 +49,11 @@ portal informado
 -> seleção pela competência AAAA/MM
 -> download da segunda via em Base64
 -> validação do PDF
--> output/equatorial/AAAA-MM/invoice-<hash>.pdf
+-> output/equatorial/CONTA/AAAA-MM/CONTA_MMYYYY.pdf
 ```
 
 Os logs são estruturados e não exibem documento, data de nascimento, conta,
-Base64 ou JWT. O arquivo é nomeado por parte do hash, não por dados do cliente.
+Base64 ou JWT. O arquivo é nomeado pela conta contrato e competência.
 
 ## Verificações locais
 

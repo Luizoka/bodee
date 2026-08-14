@@ -30,7 +30,7 @@ describe('loadPocConfig', () => {
         invalidVariables: [
           'EQUATORIAL_DOCUMENT',
           'EQUATORIAL_BIRTH_DATE',
-          'EQUATORIAL_ACCOUNT',
+          'EQUATORIAL_ACCOUNT ou EQUATORIAL_ACCOUNTS',
         ],
       });
     }

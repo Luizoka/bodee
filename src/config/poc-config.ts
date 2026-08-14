@@ -43,6 +43,7 @@ const schema = z
       .int()
       .positive()
       .default(30_000),
+    DATABASE_URL: z.string().url().optional(),
     POC_OUTPUT_DIR: z.string().trim().min(1).default('output/equatorial'),
   })
   .superRefine((value, context) => {
@@ -54,7 +55,7 @@ const schema = z
     if (!hasSingleAccount && !hasMultipleAccounts) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['EQUATORIAL_ACCOUNT'],
+        path: ['EQUATORIAL_ACCOUNT ou EQUATORIAL_ACCOUNTS'],
         message: 'informe EQUATORIAL_ACCOUNT ou EQUATORIAL_ACCOUNTS',
       });
     }
@@ -74,6 +75,7 @@ export interface PocConfig {
   persistentBrowserContext: boolean;
   browserUserDataDirectory: string;
   apiTimeoutMs: number;
+  databaseUrl: string | undefined;
   outputDirectory: string;
 }
 
@@ -97,6 +99,11 @@ export function loadPocConfig(
           .filter(Boolean),
       ),
     ];
+    const accountChoice = 'EQUATORIAL_ACCOUNT ou EQUATORIAL_ACCOUNTS';
+    if (invalidVariables.includes(accountChoice)) {
+      const index = invalidVariables.indexOf('EQUATORIAL_ACCOUNT');
+      if (index >= 0) invalidVariables.splice(index, 1);
+    }
 
     throw new PocConfigurationError(invalidVariables);
   }
@@ -115,7 +122,9 @@ export function loadPocConfig(
       : [];
 
   if (accounts.length === 0) {
-    throw new PocConfigurationError(['EQUATORIAL_ACCOUNTS']);
+    throw new PocConfigurationError([
+      'EQUATORIAL_ACCOUNT ou EQUATORIAL_ACCOUNTS',
+    ]);
   }
 
   return {
@@ -135,6 +144,7 @@ export function loadPocConfig(
       value.PLAYWRIGHT_USER_DATA_DIR,
     ),
     apiTimeoutMs: value.EQUATORIAL_API_TIMEOUT_MS,
+    databaseUrl: value.DATABASE_URL,
     outputDirectory: resolve(process.cwd(), value.POC_OUTPUT_DIR),
   };
 }
