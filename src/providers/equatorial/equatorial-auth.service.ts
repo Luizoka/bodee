@@ -173,9 +173,10 @@ async function prepareApiCookieContext(
 async function captureAuthFormDiagnostic(
   page: Page,
   directory: string,
+  filename = 'auth-form-unavailable.png',
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const file = join(directory, 'auth-form-unavailable.png');
+  const file = join(directory, filename);
   await page.screenshot({ path: file });
   return file;
 }
@@ -406,13 +407,23 @@ export class EquatorialAuthService {
         await page.waitForTimeout(250);
       }
 
+      const diagnosticFile = await captureAuthFormDiagnostic(
+        page,
+        options.diagnosticDirectory,
+        'token-timeout.png',
+      ).catch(() => undefined);
+
       throw new EquatorialError(
         loginMode === 'otp'
           ? EquatorialErrorCode.AUTH_TIMEOUT
           : EquatorialErrorCode.TOKEN_NOT_FOUND,
         loginMode === 'otp'
-          ? 'O OTP não foi concluído dentro do tempo configurado.'
-          : 'O login foi enviado, mas nenhum JWT foi encontrado.',
+          ? diagnosticFile
+            ? `O OTP não foi concluído dentro do tempo configurado. Captura salva em ${diagnosticFile}.`
+            : 'O OTP não foi concluído dentro do tempo configurado.'
+          : diagnosticFile
+            ? `O login foi enviado, mas nenhum JWT foi encontrado. Captura salva em ${diagnosticFile}.`
+            : 'O login foi enviado, mas nenhum JWT foi encontrado.',
         true,
       );
     } finally {

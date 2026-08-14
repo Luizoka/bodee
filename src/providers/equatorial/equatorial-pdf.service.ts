@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { Injectable } from '@nestjs/common';
@@ -79,8 +79,30 @@ export class EquatorialPdfService {
     const temporary = join(directory, `.${filename}.${randomUUID()}.tmp`);
 
     await mkdir(directory, { recursive: true });
+
+    // O nome contém o hash do conteúdo; portanto, se o mesmo PDF já foi
+    // salvo, não há motivo para sobrescrevê-lo.
+    try {
+      await access(target);
+      return target;
+    } catch {
+      // Primeiro download desta versão do arquivo.
+    }
+
     await writeFile(temporary, pdf.buffer, { flag: 'wx' });
-    await rename(temporary, target);
+    try {
+      await rename(temporary, target);
+    } catch (error) {
+      // Outra execução pode ter concluído o mesmo arquivo entre o access e o
+      // rename. Nesse caso, o arquivo existente continua sendo válido.
+      try {
+        await access(target);
+        await unlink(temporary).catch(() => undefined);
+        return target;
+      } catch {
+        throw error;
+      }
+    }
 
     return target;
   }
