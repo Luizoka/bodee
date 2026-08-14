@@ -1,0 +1,87 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import { Injectable } from '@nestjs/common';
+import { PDFDocument } from 'pdf-lib';
+
+import { EquatorialError, EquatorialErrorCode } from './equatorial.errors';
+import type { ValidatedPdf } from './equatorial.types';
+
+function cleanBase64(value: string): string {
+  const trimmed = value.trim();
+  const payload = trimmed.startsWith('data:')
+    ? (trimmed.split(',', 2)[1] ?? '')
+    : trimmed;
+
+  return payload.replace(/\s/g, '');
+}
+
+@Injectable()
+export class EquatorialPdfService {
+  async decodeAndValidate(base64: string): Promise<ValidatedPdf> {
+    const cleaned = cleanBase64(base64);
+
+    if (
+      !cleaned ||
+      cleaned.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned)
+    ) {
+      throw new EquatorialError(
+        EquatorialErrorCode.INVALID_BASE64,
+        'O conteúdo recebido não é um Base64 válido.',
+        false,
+      );
+    }
+
+    const buffer = Buffer.from(cleaned, 'base64');
+    if (buffer.length === 0 || buffer.subarray(0, 5).toString() !== '%PDF-') {
+      throw new EquatorialError(
+        EquatorialErrorCode.INVALID_PDF,
+        'O arquivo recebido não possui assinatura PDF.',
+        false,
+      );
+    }
+
+    try {
+      const document = await PDFDocument.load(buffer);
+      const pageCount = document.getPageCount();
+
+      if (pageCount < 1) {
+        throw new Error('PDF sem páginas');
+      }
+
+      return {
+        buffer,
+        pageCount,
+        size: buffer.length,
+        sha256: createHash('sha256').update(buffer).digest('hex'),
+      };
+    } catch (error) {
+      throw new EquatorialError(
+        EquatorialErrorCode.INVALID_PDF,
+        'O arquivo recebido não pôde ser aberto como PDF.',
+        false,
+        { cause: error },
+      );
+    }
+  }
+
+  async saveLocally(
+    pdf: ValidatedPdf,
+    outputDirectory: string,
+    competence: string,
+  ): Promise<string> {
+    const competenceDirectory = competence.replace('/', '-');
+    const directory = join(outputDirectory, competenceDirectory);
+    const filename = `invoice-${pdf.sha256.slice(0, 12)}.pdf`;
+    const target = join(directory, filename);
+    const temporary = join(directory, `.${filename}.${randomUUID()}.tmp`);
+
+    await mkdir(directory, { recursive: true });
+    await writeFile(temporary, pdf.buffer, { flag: 'wx' });
+    await rename(temporary, target);
+
+    return target;
+  }
+}

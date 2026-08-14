@@ -1,0 +1,1489 @@
+Sim. Eu montaria isso como um **documento de implementação para o agente**, já separando o que foi confirmado na engenharia reversa do que ainda é decisão arquitetural.
+
+Abaixo está um texto que você pode praticamente copiar e mandar para ele.
+
+---
+
+# Projeto: FaturaSync
+
+Quero iniciar um novo projeto chamado **FaturaSync**.
+
+A ideia é criar uma **API independente para automação de coleta de faturas**, inicialmente da Equatorial Energia, que possa ser consumida por diferentes sistemas meus.
+
+Hoje tenho pelo menos dois consumidores potenciais:
+
+* um projeto de visualização de faturas, o **Mapa GD**;
+* outro sistema de um cliente que precisa obter determinadas faturas mensalmente.
+
+O FaturaSync deve esconder toda a complexidade da Equatorial. Os sistemas consumidores não devem precisar saber sobre Playwright, CAPTCHA, JWT da Equatorial, endpoints internos, Base64 etc.
+
+A ideia conceitual é:
+
+```text
+Mapa GD ───────────────┐
+                       │
+Sistema Cliente ───────┼──> FaturaSync API
+                       │
+Outros sistemas ───────┘
+                              ↓
+                         Equatorial
+```
+
+---
+
+# 1. Objetivo principal
+
+A API precisa suportar dois modos de operação.
+
+### Consulta sob demanda
+
+Um sistema poderá solicitar:
+
+```text
+"Puxe agora as faturas deste cliente para esta competência."
+```
+
+Exemplo conceitual:
+
+```http
+POST /v1/sync
+```
+
+```json
+{
+  "clientId": "client_123",
+  "competencia": "2026/08"
+}
+```
+
+A operação deve ser assíncrona.
+
+A API responde inicialmente:
+
+```json
+{
+  "jobId": "job_xyz",
+  "status": "queued"
+}
+```
+
+E posteriormente:
+
+```http
+GET /v1/jobs/job_xyz
+```
+
+---
+
+### Consulta mensal automática
+
+Também deve ser possível cadastrar uma automação como:
+
+```text
+Cliente X
+executar a partir do dia 09 de cada mês
+
+Contas:
+X
+Y
+Z
+```
+
+No dia 09, o sistema verifica a competência do mês atual.
+
+Exemplo:
+
+```text
+09/08/2026
+→ procurar competência 2026/08
+```
+
+Se encontrar:
+
+```text
+X ✅
+Y ✅
+Z ✅
+```
+
+a execução mensal é concluída.
+
+Se acontecer:
+
+```text
+X ✅
+Y ✅
+Z ❌
+```
+
+o sistema deve:
+
+* salvar X e Y;
+* não baixá-las novamente;
+* manter somente Z pendente;
+* tentar Z novamente no próximo dia.
+
+Isso continua até todas serem obtidas ou até atingir um limite configurável de tentativas/dias.
+
+---
+
+# 2. Arquitetura desejada
+
+Não quero colocar tudo dentro de um controller ou serviço monolítico.
+
+Separar pelo menos:
+
+```text
+FaturaSync
+
+API
+│
+├── Clientes
+├── Contas
+├── Faturas
+├── Automações
+└── Jobs
+
+Worker
+│
+├── autenticação Equatorial
+├── consulta de faturas
+├── download
+└── processamento de PDF
+
+Scheduler
+│
+└── cria os jobs mensais
+
+Queue
+│
+└── controla execução, retries e concorrência
+
+Banco
+│
+└── metadados
+
+Object Storage
+   └── PDFs
+```
+
+Tecnologias sugeridas:
+
+```text
+Node.js
+TypeScript
+NestJS
+PostgreSQL
+Prisma
+Playwright
+BullMQ
+Redis
+Object Storage compatível com S3
+```
+
+Podemos alterar alguma tecnologia caso exista justificativa, mas quero manter a arquitetura modular.
+
+---
+
+# 3. Provider pattern
+
+Não quero acoplar o projeto inteiro à Equatorial.
+
+Criar uma abstração de provider.
+
+Algo conceitualmente assim:
+
+```ts
+interface InvoiceProvider {
+  authenticate(credentials: ProviderCredentials): Promise<AuthSession>;
+
+  listInvoices(
+    account: string,
+    competence: string
+  ): Promise<ProviderInvoice[]>;
+
+  downloadInvoice(
+    account: string,
+    invoiceId: string
+  ): Promise<Buffer>;
+}
+```
+
+Estrutura:
+
+```text
+src/
+  providers/
+    equatorial/
+      equatorial-auth.service.ts
+      equatorial-api.service.ts
+      equatorial-provider.ts
+      equatorial.types.ts
+```
+
+Assim futuramente pode existir:
+
+```text
+providers/
+├── equatorial
+├── enel
+├── neoenergia
+└── energisa
+```
+
+sem modificar a lógica central do FaturaSync.
+
+---
+
+# 4. Fluxo confirmado da Equatorial
+
+Já fizemos engenharia reversa usando uma sessão legítima no portal.
+
+O frontend utiliza a API:
+
+```text
+https://api-pa-cliente.equatorialenergia.com.br
+```
+
+O JavaScript do próprio portal faz a consulta de débitos usando Bearer JWT:
+
+```http
+GET /api/v1/debitos/{contaContrato}?listarEmAberto=false
+Authorization: Bearer {JWT}
+```
+
+e processa:
+
+```js
+response.data.faturas
+```
+
+Isso foi identificado diretamente no código carregado pelo portal. 
+
+A resposta real que já testamos contém, entre outros:
+
+```json
+{
+  "data": {
+    "contaContrato": "...",
+    "totalDebitos": "...",
+    "faturas": [
+      {
+        "numeroFatura": "...",
+        "valor": "...",
+        "dataVencimento": "2026-07-24",
+        "dataPagamento": "0000-00-00",
+        "competencia": "2026/07",
+        "codigoBarras": "...",
+        "notaFiscal": "...",
+        "obs": null
+      }
+    ]
+  }
+}
+```
+
+Também confirmamos o endpoint da segunda via:
+
+```http
+GET /api/v1/faturas/segunda-via/{numeroFatura}?contaContrato={contaContrato}
+Authorization: Bearer {JWT}
+```
+
+A resposta tem formato:
+
+```json
+{
+  "codigoTransacao": "...",
+  "data": {
+    "url": null,
+    "base64": "JVBERi0..."
+  }
+}
+```
+
+`data.base64` é o PDF da fatura codificado em Base64.
+
+---
+
+# 5. Login da Equatorial
+
+O login não deverá inicialmente ser reproduzido via HTTP puro.
+
+O portal utiliza CAPTCHA invisível e mecanismos de segurança carregados pelo próprio frontend. O HAR mostrou uso de reCAPTCHA Enterprise e SDK da Transmit Security. 
+
+Fluxo esperado:
+
+```text
+Playwright
+↓
+abre portal oficial
+↓
+preenche login
+↓
+preenche senha/data
+↓
+clica em entrar
+↓
+o próprio frontend executa:
+  CAPTCHA
+  antifraude
+  cookies
+  demais tokens
+↓
+login concluído
+↓
+capturar access_token
+```
+
+Depois disso, não continuar navegando pelo portal.
+
+Usar:
+
+```text
+Playwright → somente autenticação
+HTTP → todo o restante
+```
+
+O JWT retornado pelo login será utilizado como:
+
+```http
+Authorization: Bearer ACCESS_TOKEN
+```
+
+---
+
+# 6. Cache da autenticação
+
+Não fazer novo login via Playwright desnecessariamente.
+
+Guardar a sessão/token de maneira segura.
+
+Fluxo:
+
+```text
+job precisa consultar cliente
+↓
+existe token armazenado?
+↓
+sim
+↓
+tenta API Equatorial
+↓
+200 → continua
+401 → autentica novamente
+```
+
+Não confiar somente no `expires_in`.
+
+A validação prática deve ser a resposta da API.
+
+---
+
+# 7. Credenciais
+
+As credenciais da Equatorial são sensíveis.
+
+Nunca armazenar senha/data utilizada na autenticação em texto puro.
+
+Implementar:
+
+```text
+criptografia em repouso
+```
+
+A aplicação deve descriptografar somente quando for iniciar o Playwright.
+
+Nunca:
+
+```text
+console.log(password)
+console.log(jwt)
+console.log(cpf completo)
+```
+
+em produção.
+
+Também sanitizar logs de erro.
+
+---
+
+# 8. Cliente e contas
+
+Um cliente pode ter várias contas que precisam ser consultadas.
+
+Exemplo:
+
+```text
+Cliente X
+
+credencial:
+CPF
+data de nascimento
+
+contas:
+000111...
+000222...
+000333...
+```
+
+Modelar separadamente.
+
+Exemplo:
+
+```text
+Client
+- id
+- name
+- document
+- encryptedCredential
+- provider
+- active
+- createdAt
+- updatedAt
+```
+
+```text
+ClientAccount
+- id
+- clientId
+- provider
+- externalAccountId
+- label
+- active
+```
+
+`externalAccountId` será inicialmente a `contaContrato`.
+
+---
+
+# 9. Fatura
+
+Criar entidade de fatura aproximadamente assim:
+
+```text
+Invoice
+- id
+- clientId
+- accountId
+- provider
+- competence
+- externalInvoiceId
+- amount
+- dueDate
+- paymentDate
+- barcode
+- fiscalNote
+- fileKey
+- fileHash
+- originalFileSize
+- processedFileSize
+- downloadedAt
+- createdAt
+```
+
+Criar restrição de unicidade para impedir duplicidade.
+
+Algo como:
+
+```text
+provider
++
+accountId
++
+externalInvoiceId
+```
+
+ou, se for seguro após análise:
+
+```text
+accountId + competence
+```
+
+Preferir `numeroFatura` como identificador externo quando disponível.
+
+---
+
+# 10. Competência
+
+Nunca selecionar simplesmente:
+
+```text
+faturas[0]
+```
+
+A fatura precisa ser encontrada pela competência desejada.
+
+A API da Equatorial retorna:
+
+```text
+2026/07
+```
+
+Então para agosto de 2026:
+
+```ts
+const target = "2026/08";
+
+const invoice = invoices.find(
+  invoice => invoice.competencia === target
+);
+```
+
+Se não existir:
+
+```text
+WAITING_INVOICE
+```
+
+e não:
+
+```text
+FAILED
+```
+
+Isso é uma situação normal.
+
+---
+
+# 11. Execução mensal
+
+Criar uma entidade de automação.
+
+Exemplo:
+
+```text
+Automation
+- id
+- clientId
+- executionDay
+- active
+- retryLimit
+```
+
+Exemplo:
+
+```text
+Cliente X
+executionDay = 9
+```
+
+O scheduler pode rodar diariamente, por exemplo às 08:00.
+
+Ele pergunta:
+
+```text
+quais automações precisam ser processadas hoje?
+```
+
+Não criar um cron por cliente.
+
+---
+
+# 12. Monthly Sync
+
+Também criar uma representação da execução mensal.
+
+Algo como:
+
+```text
+MonthlySync
+- id
+- automationId
+- competence
+- status
+- startedAt
+- completedAt
+- nextRetryAt
+- attempts
+```
+
+Status sugeridos:
+
+```text
+PENDING
+RUNNING
+WAITING_INVOICE
+COMPLETED
+PARTIAL
+FAILED
+REQUIRES_ATTENTION
+```
+
+E por conta:
+
+```text
+MonthlySyncItem
+- id
+- monthlySyncId
+- accountId
+- status
+- invoiceId
+- attempts
+- lastErrorCode
+- lastAttemptAt
+```
+
+Assim conseguimos ter:
+
+```text
+Agosto/2026
+
+Conta X → COMPLETED
+Conta Y → COMPLETED
+Conta Z → WAITING_INVOICE
+```
+
+No dia seguinte, processar somente Z.
+
+---
+
+# 13. Retries
+
+O portal da Equatorial frequentemente fica indisponível.
+
+O sistema precisa diferenciar:
+
+```text
+PORTAL_UNAVAILABLE
+AUTH_FAILED
+AUTH_TIMEOUT
+CAPTCHA_REJECTED
+TOKEN_EXPIRED
+API_TIMEOUT
+API_500
+INVOICE_NOT_AVAILABLE
+DOWNLOAD_FAILED
+INVALID_PDF
+UNKNOWN_ERROR
+```
+
+Não tratar tudo como:
+
+```text
+"Erro ao baixar fatura"
+```
+
+Alguns erros merecem retry automático.
+
+Exemplo:
+
+```text
+PORTAL_UNAVAILABLE → retry
+API_TIMEOUT → retry
+API_500 → retry
+INVOICE_NOT_AVAILABLE → próximo dia
+TOKEN_EXPIRED → renovar login imediatamente
+AUTH_INVALID_CREDENTIALS → não ficar tentando
+```
+
+Usar backoff.
+
+Evitar várias tentativas seguidas contra um portal que está fora do ar.
+
+---
+
+# 14. Critério de sucesso
+
+Uma conta só deve ser marcada como concluída quando:
+
+```text
+fatura encontrada
+↓
+segunda via obtida
+↓
+Base64 válido
+↓
+PDF decodificado
+↓
+PDF validado
+↓
+PDF processado
+↓
+arquivo salvo no storage
+↓
+registro salvo no banco
+↓
+COMPLETED
+```
+
+Receber `HTTP 200` sozinho não é suficiente.
+
+---
+
+# 15. Validação do PDF
+
+Ao receber:
+
+```json
+{
+  "data": {
+    "base64": "..."
+  }
+}
+```
+
+converter:
+
+```ts
+Buffer.from(base64, "base64")
+```
+
+Validar pelo menos:
+
+* buffer não vazio;
+* assinatura `%PDF`;
+* PDF consegue ser aberto por biblioteca;
+* contém pelo menos uma página.
+
+Somente então continuar.
+
+---
+
+# 16. Remover segunda página
+
+As faturas novas da Equatorial ficaram muito maiores.
+
+Anteriormente eram aproximadamente 50 KB e atualmente podem chegar a cerca de 500 KB, além de terem duas páginas.
+
+Para o nosso uso, a segunda página é desnecessária.
+
+Depois de obter o PDF:
+
+```text
+Base64
+↓
+Buffer
+↓
+PDF
+↓
+manter somente página 1
+↓
+gerar novo PDF
+```
+
+Pode usar `pdf-lib` inicialmente.
+
+Algo conceitual:
+
+```ts
+const source = await PDFDocument.load(buffer);
+const output = await PDFDocument.create();
+
+const [firstPage] = await output.copyPages(source, [0]);
+
+output.addPage(firstPage);
+
+const bytes = await output.save();
+```
+
+Guardar:
+
+```text
+originalFileSize
+processedFileSize
+```
+
+para medir o ganho real.
+
+Não fazer otimizações destrutivas inicialmente.
+
+Primeiro somente remover página 2.
+
+Depois podemos estudar compressão adicional.
+
+---
+
+# 17. Storage
+
+Não guardar Base64 no PostgreSQL.
+
+Fluxo:
+
+```text
+Base64
+↓
+Buffer
+↓
+processamento
+↓
+Object Storage
+```
+
+No banco salvar somente:
+
+```text
+fileKey
+hash
+size
+metadata
+```
+
+Podemos inicialmente usar armazenamento local em desenvolvimento e depois S3/R2/Supabase Storage/etc.
+
+Não acoplar o domínio a um provider específico de storage.
+
+---
+
+# 18. Não baixar repetidamente
+
+Uma vez obtida a fatura da competência:
+
+```text
+2026/08
+```
+
+não baixá-la novamente todos os dias.
+
+No retry mensal:
+
+```text
+X COMPLETED → ignorar
+Y COMPLETED → ignorar
+Z WAITING → consultar novamente
+```
+
+Isso é essencial.
+
+---
+
+# 19. Hash
+
+Após processar o arquivo, calcular SHA-256.
+
+Guardar:
+
+```text
+fileHash
+```
+
+Isso permitirá no futuro identificar:
+
+* arquivos duplicados;
+* eventual alteração de PDF;
+* integridade.
+
+---
+
+# 20. API pública do FaturaSync
+
+Criar inicialmente uma API REST versionada:
+
+```text
+/api/v1
+```
+
+Endpoints propostos:
+
+### Clientes
+
+```http
+POST   /api/v1/clients
+GET    /api/v1/clients
+GET    /api/v1/clients/:id
+PATCH  /api/v1/clients/:id
+```
+
+### Contas
+
+```http
+POST   /api/v1/clients/:id/accounts
+GET    /api/v1/clients/:id/accounts
+PATCH  /api/v1/accounts/:id
+```
+
+### Sync manual
+
+```http
+POST /api/v1/clients/:id/sync
+```
+
+Body opcional:
+
+```json
+{
+  "competence": "2026/08",
+  "accountIds": ["..."]
+}
+```
+
+Se competência não for informada:
+
+```text
+usar mês atual
+```
+
+Resposta:
+
+```json
+{
+  "jobId": "...",
+  "status": "queued"
+}
+```
+
+### Jobs
+
+```http
+GET /api/v1/jobs/:id
+```
+
+### Faturas
+
+```http
+GET /api/v1/clients/:id/invoices
+GET /api/v1/clients/:id/invoices?competence=2026/08
+GET /api/v1/invoices/:id
+GET /api/v1/invoices/:id/file
+```
+
+### Automações
+
+```http
+POST  /api/v1/clients/:id/automations
+GET   /api/v1/clients/:id/automations
+PATCH /api/v1/automations/:id
+```
+
+---
+
+# 21. API não deve conhecer os sistemas consumidores
+
+Não criar lógica como:
+
+```text
+if sistema == mapa-gd
+if sistema == cliente-x
+```
+
+O FaturaSync é independente.
+
+Os consumidores consultam:
+
+```http
+GET /invoices
+```
+
+Se futuramente precisarmos avisar automaticamente que uma sincronização terminou, implementar Webhooks.
+
+Exemplo futuro:
+
+```text
+invoice.sync.completed
+invoice.sync.partial
+invoice.sync.failed
+```
+
+---
+
+# 22. Autenticação da nossa API
+
+O FaturaSync também precisa proteger a própria API.
+
+Na primeira versão, podemos usar API Keys.
+
+Exemplo:
+
+```http
+X-API-Key: ...
+```
+
+Modelar pensando em múltiplos consumidores:
+
+```text
+Mapa GD → chave A
+Sistema Cliente → chave B
+```
+
+Nunca compartilhar as credenciais da Equatorial com os sistemas consumidores.
+
+Eles só conhecem a API do FaturaSync.
+
+---
+
+# 23. Concorrência
+
+Não abrir dezenas de Chromiums simultaneamente.
+
+A fila deve controlar concorrência.
+
+Começar conservadoramente:
+
+```text
+Playwright auth concurrency: 2 ou 3
+```
+
+Depois medir.
+
+Chamadas HTTP podem ter concorrência maior.
+
+Separar filas, se necessário:
+
+```text
+auth
+invoice-sync
+pdf-processing
+```
+
+---
+
+# 24. Reutilização de autenticação por cliente
+
+Um cliente pode possuir 3 contas.
+
+Não fazer:
+
+```text
+login para X
+login para Y
+login para Z
+```
+
+Fazer:
+
+```text
+1 login
+↓
+1 JWT
+↓
+consultar X
+consultar Y
+consultar Z
+```
+
+Isso reduz drasticamente custo e risco.
+
+---
+
+# 25. Observabilidade
+
+Toda sincronização precisa ser auditável.
+
+Registrar:
+
+```text
+jobId
+clientId
+accountId
+provider
+competence
+startedAt
+finishedAt
+duration
+attempt
+result
+errorCode
+```
+
+Nunca logar:
+
+```text
+senha
+JWT completo
+CPF completo
+PDF/Base64
+```
+
+Criar logs estruturados.
+
+---
+
+# 26. Health checks
+
+Criar:
+
+```http
+GET /health
+```
+
+e, se fizer sentido:
+
+```http
+GET /health/redis
+GET /health/database
+```
+
+Não usar a Equatorial como requisito para `/health` geral.
+
+A Equatorial pode estar fora do ar e o FaturaSync continuar saudável.
+
+Podemos ter outro estado:
+
+```text
+provider status
+```
+
+separadamente.
+
+---
+
+# 27. Testes
+
+Quero testes unitários para a lógica crítica.
+
+Principalmente:
+
+```text
+competência correta
+não baixar duplicado
+retry
+item já concluído não rodar novamente
+uma conta faltando não invalida as já baixadas
+token 401 força autenticação
+Base64 inválido não gera sucesso
+PDF inválido não gera sucesso
+```
+
+Também criar mocks da Equatorial.
+
+Os testes automáticos normais não devem depender do portal real.
+
+---
+
+# 28. Teste de integração real
+
+Criar opcionalmente um script:
+
+```text
+pnpm test:equatorial
+```
+
+que use uma conta de desenvolvimento/teste configurada por `.env`.
+
+Esse teste:
+
+```text
+login
+↓
+JWT
+↓
+lista faturas
+↓
+opcionalmente baixa uma
+```
+
+Não rodar isso automaticamente em todo CI.
+
+---
+
+# 29. Configuração
+
+Usar variáveis como:
+
+```env
+DATABASE_URL=
+REDIS_URL=
+
+ENCRYPTION_KEY=
+
+EQUATORIAL_PORTAL_URL=
+EQUATORIAL_API_URL=https://api-pa-cliente.equatorialenergia.com.br
+
+STORAGE_PROVIDER=
+STORAGE_BUCKET=
+
+PLAYWRIGHT_HEADLESS=true
+
+SYNC_DEFAULT_RETRY_LIMIT=
+SYNC_WORKER_CONCURRENCY=
+```
+
+Nunca colocar dados de clientes no `.env.example`.
+
+---
+
+# 30. Primeira versão — não tentar construir tudo de uma vez
+
+Quero desenvolvimento em etapas.
+
+## Fase 1 — POC Equatorial
+
+Implementar apenas:
+
+```text
+Playwright
+↓
+login
+↓
+captura JWT
+↓
+GET /debitos
+↓
+encontra competência
+↓
+GET /segunda-via
+↓
+Base64 → PDF
+```
+
+Rodando por CLI.
+
+Exemplo:
+
+```bash
+pnpm poc:equatorial
+```
+
+Resultado:
+
+```text
+Login OK
+Token capturado
+3 contas encontradas
+Fatura 2026/08 encontrada
+PDF salvo
+```
+
+Não criar scheduler nem SaaS antes dessa etapa estar estável.
+
+---
+
+## Fase 2 — Provider Equatorial
+
+Transformar o POC em:
+
+```text
+EquatorialProvider
+```
+
+sem dependência da CLI.
+
+Testar isoladamente.
+
+---
+
+## Fase 3 — Banco
+
+Criar:
+
+```text
+Client
+ClientAccount
+Invoice
+```
+
+Cadastrar manualmente um cliente de teste.
+
+---
+
+## Fase 4 — Sync manual
+
+Criar:
+
+```http
+POST /clients/:id/sync
+```
+
+Ainda pode executar via worker simples.
+
+Comprovar:
+
+```text
+request
+↓
+job
+↓
+Equatorial
+↓
+PDF
+↓
+banco/storage
+```
+
+---
+
+## Fase 5 — Queue
+
+Adicionar Redis + BullMQ.
+
+Transformar sync em processamento assíncrono de verdade.
+
+Implementar retries.
+
+---
+
+## Fase 6 — Processamento de PDF
+
+Remover segunda página.
+
+Salvar tamanho antes/depois.
+
+---
+
+## Fase 7 — Automação mensal
+
+Criar:
+
+```text
+Automation
+MonthlySync
+MonthlySyncItem
+```
+
+Scheduler diário.
+
+Implementar:
+
+```text
+dia definido
+competência atual
+retry no dia seguinte
+somente contas pendentes
+```
+
+---
+
+## Fase 8 — API para consumidores
+
+Adicionar:
+
+```text
+API Key
+consulta de faturas
+download
+jobs
+```
+
+---
+
+## Fase 9 — Webhooks
+
+Somente depois, se algum consumidor realmente precisar.
+
+---
+
+# 31. Cenário principal que precisa funcionar
+
+Cliente configurado assim:
+
+```text
+Cliente X
+
+CPF: ***
+credencial: ***
+
+dia da coleta: 09
+
+Contas:
+X
+Y
+Z
+```
+
+No dia:
+
+```text
+09/08/2026 08:00
+```
+
+resultado possível:
+
+```text
+X → fatura 2026/08 encontrada → baixada
+Y → fatura 2026/08 encontrada → baixada
+Z → ainda não disponível
+```
+
+Estado:
+
+```text
+MonthlySync 2026/08
+PARTIAL
+
+X COMPLETED
+Y COMPLETED
+Z WAITING_INVOICE
+
+nextRetryAt = 10/08
+```
+
+Dia 10:
+
+```text
+somente Z
+```
+
+Se aparecer:
+
+```text
+Z COMPLETED
+```
+
+então:
+
+```text
+MonthlySync = COMPLETED
+```
+
+Nenhuma nova tentativa naquele mês.
+
+---
+
+# 32. Portal indisponível
+
+Cenário:
+
+```text
+09/08
+Equatorial fora do ar
+```
+
+Não marcar:
+
+```text
+fatura inexistente
+```
+
+Marcar:
+
+```text
+PROVIDER_UNAVAILABLE
+```
+
+e reagendar.
+
+Isso é importante porque a indisponibilidade do portal é frequente.
+
+O sistema precisa saber diferenciar:
+
+```text
+"não existe fatura"
+```
+
+de:
+
+```text
+"não consegui consultar"
+```
+
+---
+
+# 33. Entregável da primeira rodada
+
+Não implementar tudo agora.
+
+Primeiro quero:
+
+1. criar o projeto `fatura-sync`;
+2. estruturar os módulos;
+3. configurar TypeScript/lint/testes;
+4. instalar Playwright;
+5. criar o POC da autenticação Equatorial;
+6. capturar o JWT após login;
+7. criar client HTTP da API Equatorial;
+8. listar as faturas de uma conta;
+9. localizar uma competência específica;
+10. baixar a segunda via;
+11. converter Base64 para Buffer/PDF;
+12. validar o PDF;
+13. salvar localmente;
+14. criar testes onde for possível;
+15. documentar como executar.
+
+**Pare após essa POC funcionar e me apresente o resultado antes de avançar para banco, Redis, scheduler ou API pública.**
+
+Isso é importante porque primeiro precisamos validar que a parte mais frágil — autenticação automatizada — funciona de forma consistente.
+
+---
+
+Essa última parte eu manteria exatamente assim para o agente: **não deixe ele construir banco, filas, CRUD e metade do SaaS antes de provar que o login automatizado é confiável**. O maior risco técnico do FaturaSync hoje não é o NestJS nem o scheduler; é `Playwright → login legítimo → JWT` funcionar repetidamente sem intervenção. Depois que isso estiver sólido, o restante é engenharia bem convencional.
