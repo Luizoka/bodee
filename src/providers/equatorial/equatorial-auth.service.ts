@@ -156,20 +156,18 @@ async function prepareApiCookieContext(
   context: BrowserContext,
   apiUrl: string,
   timeoutMs: number,
-): Promise<void> {
+): Promise<Page> {
   const apiPage = await context.newPage();
 
-  try {
-    await apiPage
-      .goto(new URL(apiUrl).origin, {
-        waitUntil: 'domcontentloaded',
-        timeout: Math.min(timeoutMs, 10_000),
-      })
-      .catch(() => undefined);
-    await apiPage.waitForTimeout(1_000);
-  } finally {
-    await apiPage.close();
-  }
+  await apiPage
+    .goto(new URL(apiUrl).origin, {
+      waitUntil: 'domcontentloaded',
+      timeout: Math.min(timeoutMs, 10_000),
+    })
+    .catch(() => undefined);
+  await apiPage.waitForTimeout(1_000);
+
+  return apiPage;
 }
 
 async function captureAuthFormDiagnostic(
@@ -335,8 +333,9 @@ export class EquatorialAuthService {
           await page
             .waitForLoadState('domcontentloaded', { timeout: 5_000 })
             .catch(() => undefined);
+          let apiPage: Page;
           try {
-            await prepareApiCookieContext(
+            apiPage = await prepareApiCookieContext(
               context,
               options.apiUrl,
               options.timeoutMs,
@@ -364,11 +363,14 @@ export class EquatorialAuthService {
             userAgent,
             portalOrigin: new URL(options.portalUrl).origin,
             requestJsonFromBrowser: async (url: string) => {
-              await page
+              // A API está em um subdomínio diferente do portal. A execução
+              // nesta aba, já aberta na origem da API, evita o bloqueio CORS
+              // que ocorreria se o fetch partisse da página de login.
+              await apiPage
                 .waitForLoadState('domcontentloaded', { timeout: 5_000 })
                 .catch(() => undefined);
 
-              return page.evaluate(
+              return apiPage.evaluate(
                 async ({ requestUrl, accessToken }) => {
                   const response = await fetch(requestUrl, {
                     headers: {
