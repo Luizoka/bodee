@@ -23,15 +23,9 @@ describe.skipIf(!databaseUrl || !encryptionKey)(
 
     afterAll(async () => {
       if (clientIds.length > 0) {
-        await pool.query('DELETE FROM sync_runs WHERE client_id = ANY($1::bigint[])', [
-          clientIds,
-        ]);
-        await pool.query('DELETE FROM invoices WHERE client_id = ANY($1::bigint[])', [
-          clientIds,
-        ]);
-        await pool.query('DELETE FROM clients WHERE id = ANY($1::bigint[])', [
-          clientIds,
-        ]);
+        for (const clientId of clientIds) {
+          await service.deleteClient(clientId);
+        }
       }
       await pool.end();
     });
@@ -53,6 +47,32 @@ describe.skipIf(!databaseUrl || !encryptionKey)(
       const clientAId = Number(clientA.id);
       const clientBId = Number(clientB.id);
       clientIds.push(clientAId, clientBId);
+
+      await expect(
+        service.setEquatorialCredentials(clientAId, {
+          document: '00000000000',
+          birthDate: '01/01/1990',
+        }),
+      ).resolves.toBe(true);
+      expect(await service.getEquatorialCredentialStatus(clientAId)).toBe(true);
+      const storedCredentials = await pool.query<{
+        document_encrypted: string;
+        birth_date_encrypted: string;
+      }>(
+        `SELECT document_encrypted, birth_date_encrypted
+         FROM provider_credentials WHERE client_id = $1`,
+        [clientAId],
+      );
+      expect(storedCredentials.rows[0]?.document_encrypted).not.toBe(
+        '00000000000',
+      );
+      expect(storedCredentials.rows[0]?.birth_date_encrypted).not.toBe(
+        '01/01/1990',
+      );
+      await expect(service.getEquatorialCredentialsForWorker(clientAId)).resolves.toEqual({
+        document: '00000000000',
+        birthDate: '01/01/1990',
+      });
 
       const account = `test-${suffix}`;
       await service.addAccount(clientAId, account);
@@ -78,6 +98,8 @@ describe.skipIf(!databaseUrl || !encryptionKey)(
         await service.revokeClientApiKey(clientAId, key?.id ?? ''),
       ).toBe(true);
       expect(await service.authenticateApiKey(key?.apiKey ?? '')).toBeUndefined();
+      expect(await service.deleteEquatorialCredentials(clientAId)).toBe(true);
+      expect(await service.getEquatorialCredentialStatus(clientAId)).toBe(false);
     });
 
     it('reencaminha falhas temporárias e encerra ao atingir o limite de tentativas', async () => {

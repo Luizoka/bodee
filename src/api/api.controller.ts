@@ -9,7 +9,9 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Put,
   Req,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
@@ -84,6 +86,41 @@ export class ApiController {
     return { deleted: true };
   }
 
+  @Put('clients/:id/providers/equatorial/credentials')
+  @UseGuards(AdminApiKeyGuard)
+  async setEquatorialCredentials(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: unknown,
+  ) {
+    const credentials = parseBody(
+      z.object({
+        document: z.string().trim().min(11).max(18),
+        birthDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/),
+      }),
+      body,
+    );
+    const configured = await this.service.setEquatorialCredentials(
+      id,
+      credentials,
+    );
+    if (!configured) throw new NotFoundException('Cliente não encontrado.');
+    return { configured: true };
+  }
+
+  @Get('clients/:id/providers/equatorial/credentials/status')
+  @UseGuards(AdminApiKeyGuard)
+  async getEquatorialCredentialStatus(@Param('id', ParseIntPipe) id: number) {
+    return { configured: await this.service.getEquatorialCredentialStatus(id) };
+  }
+
+  @Delete('clients/:id/providers/equatorial/credentials')
+  @UseGuards(AdminApiKeyGuard)
+  async deleteEquatorialCredentials(@Param('id', ParseIntPipe) id: number) {
+    const deleted = await this.service.deleteEquatorialCredentials(id);
+    if (!deleted) throw new NotFoundException('Credenciais não encontradas.');
+    return { deleted: true };
+  }
+
   @Post('clients/:id/api-keys')
   @UseGuards(AdminApiKeyGuard)
   async createClientApiKey(
@@ -149,6 +186,23 @@ export class ApiController {
   @UseGuards(ClientApiKeyGuard)
   listInvoices(@Req() request: AuthenticatedRequest) {
     return this.service.listInvoices(getAuthenticatedClientId(request));
+  }
+
+  @Get('invoices/:id/download')
+  @UseGuards(ClientApiKeyGuard)
+  async downloadInvoice(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const invoice = await this.service.getInvoiceDownload(
+      id,
+      getAuthenticatedClientId(request),
+    );
+    if (!invoice) throw new NotFoundException('Fatura não encontrada.');
+    return new StreamableFile(invoice.content, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${invoice.filename}"`,
+    });
   }
 }
 

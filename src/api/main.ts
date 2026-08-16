@@ -2,7 +2,6 @@ import 'dotenv/config';
 import 'reflect-metadata';
 
 import { NestFactory } from '@nestjs/core';
-import { Pool } from 'pg';
 
 import { ApiModule } from './api.module';
 import { ApiService } from './api.service';
@@ -27,8 +26,7 @@ async function main(): Promise<void> {
 
   const app = await NestFactory.create(ApiModule);
   app.setGlobalPrefix('api/v1');
-  const pool = app.get(Pool);
-  await new ApiService(pool, encryptionKey).initialize();
+  await app.get(ApiService).initialize();
   await app.listen(Number(process.env.API_PORT ?? 3000), '0.0.0.0');
 }
 

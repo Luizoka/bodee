@@ -1,7 +1,16 @@
-import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+import { PDFDocument } from 'pdf-lib';
 import { Pool } from 'pg';
+
+import { LocalInvoiceStorageService } from './local-invoice-storage.service';
 
 type ClientType = 'PF' | 'PJ';
 
@@ -18,6 +27,11 @@ interface SyncItemInput {
   competence: string;
 }
 
+export interface EquatorialCredentials {
+  document: string;
+  birthDate: string;
+}
+
 export interface ClaimedSync {
   id: string;
   attempts: number;
@@ -32,6 +46,23 @@ function encrypt(value: string, keyHex: string): string {
     .join('.');
 }
 
+function decrypt(value: string, keyHex: string): string {
+  const [ivValue, tagValue, bodyValue] = value.split('.');
+  if (!ivValue || !tagValue || !bodyValue) {
+    throw new Error('Credencial criptografada inválida.');
+  }
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    Buffer.from(keyHex, 'hex'),
+    Buffer.from(ivValue, 'base64url'),
+  );
+  decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(bodyValue, 'base64url')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
 function hashApiKey(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -41,6 +72,7 @@ export class ApiService {
   constructor(
     private readonly pool: Pool,
     private readonly key: string,
+    private readonly storage = new LocalInvoiceStorageService(),
   ) {}
 
   async initialize(): Promise<void> {
@@ -115,6 +147,15 @@ export class ApiService {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         revoked_at TIMESTAMPTZ
       );
+      CREATE TABLE IF NOT EXISTS provider_credentials (
+        client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('EQUATORIAL')),
+        document_encrypted TEXT NOT NULL,
+        birth_date_encrypted TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (client_id, provider)
+      );
     `);
   }
 
@@ -172,6 +213,7 @@ export class ApiService {
       ]);
       await connection.query('DELETE FROM clients WHERE id = $1', [clientId]);
       await connection.query('COMMIT');
+      await this.storage.removeClientFiles(clientId);
       return true;
     } catch (error) {
       await connection.query('ROLLBACK').catch(() => undefined);
@@ -179,6 +221,71 @@ export class ApiService {
     } finally {
       connection.release();
     }
+  }
+
+  async setEquatorialCredentials(
+    clientId: number,
+    credentials: EquatorialCredentials,
+  ): Promise<boolean> {
+    const client = await this.pool.query(
+      'SELECT id FROM clients WHERE id = $1 AND active = TRUE',
+      [clientId],
+    );
+    if (!client.rows[0]) return false;
+
+    await this.pool.query(
+      `INSERT INTO provider_credentials
+         (client_id, provider, document_encrypted, birth_date_encrypted)
+       VALUES ($1, 'EQUATORIAL', $2, $3)
+       ON CONFLICT (client_id, provider) DO UPDATE SET
+         document_encrypted = EXCLUDED.document_encrypted,
+         birth_date_encrypted = EXCLUDED.birth_date_encrypted,
+         updated_at = NOW()`,
+      [
+        clientId,
+        encrypt(credentials.document, this.key),
+        encrypt(credentials.birthDate, this.key),
+      ],
+    );
+    return true;
+  }
+
+  async getEquatorialCredentialStatus(clientId: number): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1 FROM provider_credentials
+       WHERE client_id = $1 AND provider = 'EQUATORIAL'`,
+      [clientId],
+    );
+    return Boolean(result.rows[0]);
+  }
+
+  async getEquatorialCredentialsForWorker(
+    clientId: number,
+  ): Promise<EquatorialCredentials | undefined> {
+    const result = await this.pool.query<{
+      document_encrypted: string;
+      birth_date_encrypted: string;
+    }>(
+      `SELECT document_encrypted, birth_date_encrypted
+       FROM provider_credentials
+       WHERE client_id = $1 AND provider = 'EQUATORIAL'`,
+      [clientId],
+    );
+    const credentials = result.rows[0];
+    if (!credentials) return undefined;
+    return {
+      document: decrypt(credentials.document_encrypted, this.key),
+      birthDate: decrypt(credentials.birth_date_encrypted, this.key),
+    };
+  }
+
+  async deleteEquatorialCredentials(clientId: number): Promise<boolean> {
+    const result = await this.pool.query(
+      `DELETE FROM provider_credentials
+       WHERE client_id = $1 AND provider = 'EQUATORIAL'`,
+      [clientId],
+    );
+    return result.rowCount === 1;
   }
 
   async createClientApiKey(clientId: number, label: string) {
@@ -395,10 +502,27 @@ export class ApiService {
       );
 
       for (const item of items.rows) {
-        const sha256 = createHash('sha256')
-          .update(`offline:${item.client_id}:${item.account}:${item.competence}`)
-          .digest('hex');
-        const filePath = `offline://${item.account}/${String(item.competence).replace('/', '-')}.pdf`;
+        const document = await PDFDocument.create();
+        const page = document.addPage([595, 842]);
+        page.drawText('Fatura de teste - processamento offline', {
+          x: 50,
+          y: 780,
+          size: 16,
+        });
+        page.drawText(`Conta: ${item.account}`, { x: 50, y: 740, size: 12 });
+        page.drawText(`Competência: ${item.competence}`, {
+          x: 50,
+          y: 720,
+          size: 12,
+        });
+        const content = Buffer.from(await document.save());
+        const saved = await this.storage.save(
+          Number(item.client_id),
+          String(item.account),
+          String(item.competence),
+          content,
+        );
+        const sha256 = createHash('sha256').update(content).digest('hex');
 
         await connection.query(
           `INSERT INTO invoices
@@ -415,7 +539,7 @@ export class ApiService {
             item.client_id,
             item.account,
             item.competence,
-            filePath,
+            saved.filePath,
             sha256,
           ],
         );
@@ -483,5 +607,15 @@ export class ApiService {
            FROM invoices ORDER BY downloaded_at DESC`,
         );
     return query.rows;
+  }
+
+  async getInvoiceDownload(invoiceId: number, clientId: number) {
+    const invoice = await this.pool.query<{ file_path: string }>(
+      `SELECT file_path FROM invoices WHERE id = $1 AND client_id = $2`,
+      [invoiceId, clientId],
+    );
+    const filePath = invoice.rows[0]?.file_path;
+    if (!filePath) return undefined;
+    return this.storage.read(filePath);
   }
 }

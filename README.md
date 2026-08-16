@@ -109,6 +109,16 @@ somente nessa resposta; o banco guarda exclusivamente o hash. A API sempre
 restringe sincronizações e faturas ao cliente autenticado, mesmo que outro UUID
 seja informado na URL.
 
+As credenciais da Equatorial são administradas apenas com a chave administrativa:
+
+- `PUT /clients/:id/providers/equatorial/credentials` cadastra ou atualiza;
+- `GET /clients/:id/providers/equatorial/credentials/status` informa somente se
+  estão configuradas;
+- `DELETE /clients/:id/providers/equatorial/credentials` remove.
+
+CPF/CNPJ e data de nascimento nunca são devolvidos pela API: o banco armazena
+somente versões criptografadas, que serão usadas pelo provider real no worker.
+
 O processamento offline é um worker local, não uma rota HTTP:
 
 ```bash
@@ -122,6 +132,10 @@ buscar no máximo uma pendência e encerrar, use `pnpm worker:offline -- --once`
 
 Ele existe apenas para desenvolvimento: não acessa a Equatorial nem usa
 credenciais reais.
+
+No modo offline, cada processamento gera um PDF de teste em
+`INVOICE_STORAGE_DIR` (padrão `output/invoices`). O cliente autenticado pode
+baixar somente a própria fatura com `GET /api/v1/invoices/:id/download`.
 
 Para executar o fluxo completo de segurança e API contra a instância local em
 execução, use:
@@ -139,6 +153,13 @@ específico, no Windows execute:
 
 ```cmd
 set API_FLOW_WORKER_MODE=queue && pnpm test:api:flow
+```
+
+Com `pnpm worker:offline` já aberto em outro terminal, o fluxo pode usar esse
+mesmo worker contínuo:
+
+```cmd
+pnpm test:api:flow -- --use-running-worker
 ```
 
 `pnpm test:equatorial` é intencionalmente um teste real opcional e não deve ser

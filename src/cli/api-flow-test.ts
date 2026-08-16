@@ -55,6 +55,24 @@ async function runOfflineWorker(syncId: string): Promise<void> {
   });
 }
 
+async function waitForWorker(
+  baseUrl: string,
+  syncId: string,
+  headers: HeadersInit,
+): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const sync = await requestJson(baseUrl, `/sync/${syncId}`, { headers });
+    assertStatus(sync.response, 200, 'consulta durante o processamento');
+    if (sync.body.status === 'COMPLETED') return;
+    if (sync.body.status === 'FAILED') {
+      throw new Error('O worker marcou a sincronização como FAILED.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error('O worker contínuo não concluiu a sincronização em 15 segundos.');
+}
+
 async function run(): Promise<void> {
   const baseUrl = (process.env.API_BASE_URL ?? 'http://localhost:3000/api/v1').replace(
     /\/$/,
@@ -67,6 +85,9 @@ async function run(): Promise<void> {
     authorization: `Bearer ${adminApiKey}`,
     'content-type': 'application/json',
   };
+  const useRunningWorker =
+    process.argv.includes('--use-running-worker') ||
+    process.env.API_FLOW_USE_RUNNING_WORKER === 'true';
   const suffix = randomUUID().slice(0, 8);
   const testClientIds: number[] = [];
 
@@ -104,6 +125,32 @@ async function run(): Promise<void> {
     const clientA = await createClient(`Fluxo A ${suffix}`, '00000000000');
     const clientB = await createClient(`Fluxo B ${suffix}`, '11111111111');
     reportStep('clientes_criados_com_chave_administrativa');
+    const credentials = await requestJson(
+      baseUrl,
+      `/clients/${clientA}/providers/equatorial/credentials`,
+      {
+        method: 'PUT',
+        headers: adminHeaders,
+        body: JSON.stringify({
+          document: '00000000000',
+          birthDate: '01/01/1990',
+        }),
+      },
+    );
+    assertStatus(credentials.response, 200, 'cadastro de credenciais');
+    if (credentials.body.configured !== true) {
+      throw new Error('Credenciais não foram marcadas como configuradas.');
+    }
+    const credentialStatus = await requestJson(
+      baseUrl,
+      `/clients/${clientA}/providers/equatorial/credentials/status`,
+      { headers: adminHeaders },
+    );
+    assertStatus(credentialStatus.response, 200, 'status de credenciais');
+    if (credentialStatus.body.configured !== true) {
+      throw new Error('Status de credenciais não foi atualizado.');
+    }
+    reportStep('credenciais_equatorial_criptografadas_e_configuradas');
     const account = `flow-${suffix}`;
 
     for (const clientId of [clientA, clientB]) {
@@ -172,12 +219,17 @@ async function run(): Promise<void> {
     assertStatus(foreignSync.response, 404, 'isolamento entre clientes');
     reportStep('cliente_estranho_nao_acessa_sincronizacao_alheia');
 
-    await runOfflineWorker(syncId);
-    reportStep(
-      process.env.API_FLOW_WORKER_MODE === 'queue'
-        ? 'worker_da_fila_processou_a_sincronizacao'
-        : 'worker_offline_processou_a_sincronizacao',
-    );
+    if (useRunningWorker) {
+      await waitForWorker(baseUrl, syncId, clientAHeaders);
+      reportStep('worker_continuo_processou_a_sincronizacao');
+    } else {
+      await runOfflineWorker(syncId);
+      reportStep(
+        process.env.API_FLOW_WORKER_MODE === 'queue'
+          ? 'worker_da_fila_processou_a_sincronizacao'
+          : 'worker_offline_processou_a_sincronizacao',
+      );
+    }
 
     const invoicesA = await requestJson(baseUrl, '/invoices', {
       headers: clientAHeaders,
@@ -187,6 +239,22 @@ async function run(): Promise<void> {
       throw new Error('O cliente dono não recebeu a fatura esperada.');
     }
     reportStep('cliente_dono_recebe_sua_fatura');
+    const invoice = invoicesA.body[0] as Record<string, unknown>;
+    const invoiceId = Number(invoice.id);
+    if (!Number.isInteger(invoiceId)) {
+      throw new Error('Fatura criada sem id válido.');
+    }
+    const download = await fetch(`${baseUrl}/invoices/${invoiceId}/download`, {
+      headers: clientAHeaders,
+    });
+    assertStatus(download, 200, 'download de fatura do dono');
+    const signature = Buffer.from(await download.arrayBuffer())
+      .subarray(0, 5)
+      .toString();
+    if (signature !== '%PDF-') {
+      throw new Error('Download não retornou um PDF válido.');
+    }
+    reportStep('cliente_dono_baixa_pdf_privado');
 
     const invoicesB = await requestJson(baseUrl, '/invoices', {
       headers: clientBHeaders,
@@ -196,6 +264,12 @@ async function run(): Promise<void> {
       throw new Error('O outro cliente recebeu faturas que não lhe pertencem.');
     }
     reportStep('cliente_estranho_nao_recebe_faturas_alheias');
+    const foreignDownload = await fetch(
+      `${baseUrl}/invoices/${invoiceId}/download`,
+      { headers: clientBHeaders },
+    );
+    assertStatus(foreignDownload, 404, 'download de fatura de outro cliente');
+    reportStep('cliente_estranho_nao_baixa_pdf_alheio');
 
     const revoked = await requestJson(
       baseUrl,
@@ -204,6 +278,14 @@ async function run(): Promise<void> {
     );
     assertStatus(revoked.response, 200, 'revogação de API key');
     reportStep('api_key_revogada');
+
+    const removedCredentials = await requestJson(
+      baseUrl,
+      `/clients/${clientA}/providers/equatorial/credentials`,
+      { method: 'DELETE', headers: adminHeaders },
+    );
+    assertStatus(removedCredentials.response, 200, 'remoção de credenciais');
+    reportStep('credenciais_equatorial_removidas');
 
     const revokedKeyRequest = await requestJson(baseUrl, '/invoices', {
       headers: clientAHeaders,
