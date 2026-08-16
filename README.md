@@ -38,6 +38,18 @@ Depois execute:
 pnpm poc:equatorial
 ```
 
+Para validar o fluxo localmente sem abrir o portal nem depender dos servidores
+da Equatorial, execute:
+
+```bash
+pnpm poc:offline
+```
+
+Esse comando simula a autenticação, a lista de faturas e o download de uma
+segunda via. O PDF de teste é salvo em `output/equatorial-offline/`. Ele aceita
+`EQUATORIAL_ACCOUNT`, `EQUATORIAL_COMPETENCE` e `POC_OFFLINE_OUTPUT_DIR` do
+`.env`, mas não usa credenciais reais.
+
 Fluxo realizado:
 
 ```text
@@ -63,6 +75,33 @@ pnpm lint
 pnpm test
 pnpm format:check
 ```
+
+## API local
+
+Inicie o PostgreSQL localmente uma única vez:
+
+```bash
+docker compose up -d
+```
+
+Com o `.env` local configurado, inicie a API:
+
+```bash
+pnpm api
+```
+
+As rotas locais estão sob o prefixo `/api/v1`:
+
+- `GET /health` verifica a conexão com o banco;
+- `POST /clients` cria um cliente;
+- `POST /clients/:id/accounts` associa uma conta contrato;
+- `POST /sync` cria uma sincronização;
+- `POST /sync/:id/process-offline` conclui a sincronização com dados simulados;
+- `GET /sync/:id` consulta o andamento;
+- `GET /invoices` e `GET /clients/:id/invoices` listam faturas gravadas.
+
+`process-offline` existe apenas para desenvolvimento local: ele não acessa a
+Equatorial nem grava credenciais reais.
 
 `pnpm test:equatorial` é intencionalmente um teste real opcional e não deve ser
 executado automaticamente no CI.

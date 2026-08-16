@@ -44,6 +44,8 @@ const schema = z
       .positive()
       .default(30_000),
     DATABASE_URL: z.string().url().optional(),
+    API_PORT: z.coerce.number().int().positive().default(3000),
+    CREDENTIALS_ENCRYPTION_KEY: z.string().length(64).optional(),
     POC_OUTPUT_DIR: z.string().trim().min(1).default('output/equatorial'),
   })
   .superRefine((value, context) => {
@@ -76,6 +78,8 @@ export interface PocConfig {
   browserUserDataDirectory: string;
   apiTimeoutMs: number;
   databaseUrl: string | undefined;
+  apiPort: number;
+  credentialsEncryptionKey: string | undefined;
   outputDirectory: string;
 }
 
@@ -145,6 +149,8 @@ export function loadPocConfig(
     ),
     apiTimeoutMs: value.EQUATORIAL_API_TIMEOUT_MS,
     databaseUrl: value.DATABASE_URL,
+    apiPort: value.API_PORT,
+    credentialsEncryptionKey: value.CREDENTIALS_ENCRYPTION_KEY,
     outputDirectory: resolve(process.cwd(), value.POC_OUTPUT_DIR),
   };
 }

@@ -10,6 +10,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "poc:equatorial": "tsx src/cli/equatorial-poc.ts",
+    "poc:offline": "tsx src/cli/equatorial-offline.ts",
+    "api": "tsx src/api/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:equatorial": "tsx src/cli/equatorial-poc.ts"
@@ -17,6 +19,7 @@
   "dependencies": {
     "@nestjs/common": "^11.2.0",
     "@nestjs/core": "^11.2.0",
+    "@nestjs/platform-express": "^11.2.0",
     "dotenv": "^17.4.2",
     "pdf-lib": "^1.17.1",
     "pg": "^8.16.3",
