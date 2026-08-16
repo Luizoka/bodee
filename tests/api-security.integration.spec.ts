@@ -121,11 +121,19 @@ describe.skipIf(!databaseUrl || !encryptionKey)(
 
       const firstClaim = await service.claimNextQueuedSync(60_000);
       expect(firstClaim).toMatchObject({ id: syncId, attempts: 1 });
-      expect(await service.recordOfflineSyncFailure(syncId, 2)).toBe('QUEUED');
+      expect(await service.recordOfflineSyncFailure(syncId, 2, 1_000)).toBe('QUEUED');
+      const delayed = await pool.query<{ delayed: boolean }>(
+        'SELECT next_attempt_at > NOW() AS delayed FROM sync_runs WHERE id = $1',
+        [syncId],
+      );
+      expect(delayed.rows[0]?.delayed).toBe(true);
+      await pool.query('UPDATE sync_runs SET next_attempt_at = NOW() WHERE id = $1', [
+        syncId,
+      ]);
 
       const secondClaim = await service.claimNextQueuedSync(60_000);
       expect(secondClaim).toMatchObject({ id: syncId, attempts: 2 });
-      expect(await service.recordOfflineSyncFailure(syncId, 2)).toBe('FAILED');
+      expect(await service.recordOfflineSyncFailure(syncId, 2, 0)).toBe('FAILED');
       expect(await service.getSync(syncId, clientId)).toMatchObject({
         status: 'FAILED',
         failed: 1,

@@ -129,6 +129,7 @@ export class ApiService {
         failed INTEGER NOT NULL DEFAULT 0,
         attempts INTEGER NOT NULL DEFAULT 0,
         started_at TIMESTAMPTZ,
+        next_attempt_at TIMESTAMPTZ,
         last_error TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         finished_at TIMESTAMPTZ
@@ -145,6 +146,7 @@ export class ApiService {
       ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS client_id BIGINT REFERENCES clients(id) ON DELETE CASCADE;
       ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+      ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;
       ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS last_error TEXT;
       ALTER TABLE sync_items DROP CONSTRAINT IF EXISTS sync_items_client_id_fkey;
       ALTER TABLE sync_items ADD CONSTRAINT sync_items_client_id_fkey
@@ -525,7 +527,7 @@ export class ApiService {
     const runs = await this.pool.query(
       `SELECT run.id,run.client_id,client.name AS client_name,run.status,
               run.total,run.completed,run.failed,run.attempts,run.last_error,
-              run.created_at,run.started_at,run.finished_at
+              run.created_at,run.started_at,run.next_attempt_at,run.finished_at
        FROM sync_runs run
        INNER JOIN clients client ON client.id = run.client_id
        ${where}
@@ -556,7 +558,8 @@ export class ApiService {
       await connection.query(
         `UPDATE sync_runs
          SET status = 'QUEUED', completed = 0, failed = 0, attempts = 0,
-             started_at = NULL, finished_at = NULL, last_error = NULL
+             started_at = NULL, next_attempt_at = NULL, finished_at = NULL,
+             last_error = NULL
          WHERE id = $1`,
         [id],
       );
@@ -577,7 +580,7 @@ export class ApiService {
       const run = await connection.query<{ id: string; attempts: number }>(
         `SELECT id, attempts
          FROM sync_runs
-         WHERE status = 'QUEUED'
+         WHERE (status = 'QUEUED' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW()))
             OR (
               status = 'PROCESSING'
               AND started_at < NOW() - ($1::text || ' milliseconds')::interval
@@ -598,6 +601,7 @@ export class ApiService {
          SET status = 'PROCESSING',
              attempts = attempts + 1,
              started_at = NOW(),
+             next_attempt_at = NULL,
              finished_at = NULL,
              last_error = NULL
          WHERE id = $1
@@ -614,9 +618,51 @@ export class ApiService {
     }
   }
 
+  async claimSyncById(
+    id: string,
+    staleAfterMs: number,
+  ): Promise<ClaimedSync | undefined> {
+    const connection = await this.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const run = await connection.query<{ attempts: number }>(
+        `SELECT attempts FROM sync_runs
+         WHERE id = $1
+           AND (
+             (status = 'QUEUED' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW()))
+             OR (
+               status = 'PROCESSING'
+               AND started_at < NOW() - ($2::text || ' milliseconds')::interval
+             )
+           )
+         FOR UPDATE`,
+        [id, String(staleAfterMs)],
+      );
+      if (!run.rows[0]) {
+        await connection.query('ROLLBACK');
+        return undefined;
+      }
+      const updated = await connection.query<{ attempts: number }>(
+        `UPDATE sync_runs
+         SET status = 'PROCESSING', attempts = attempts + 1, started_at = NOW(),
+             next_attempt_at = NULL, finished_at = NULL, last_error = NULL
+         WHERE id = $1 RETURNING attempts`,
+        [id],
+      );
+      await connection.query('COMMIT');
+      return { id, attempts: updated.rows[0]?.attempts ?? 1 };
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async recordOfflineSyncFailure(
     id: string,
     maxAttempts: number,
+    retryBaseDelayMs = 10_000,
   ): Promise<'QUEUED' | 'FAILED' | undefined> {
     const connection = await this.pool.connect();
     try {
@@ -633,6 +679,10 @@ export class ApiService {
 
       const status = failedRun.attempts >= maxAttempts ? 'FAILED' : 'QUEUED';
       const error = 'Processamento offline não foi concluído.';
+      const retryDelayMs = Math.min(
+        Math.max(0, retryBaseDelayMs) * 2 ** Math.max(0, failedRun.attempts - 1),
+        3_600_000,
+      );
       await connection.query(
         `UPDATE sync_items
          SET status = CASE WHEN $2 = 'FAILED' THEN 'FAILED' ELSE 'PENDING' END,
@@ -645,10 +695,14 @@ export class ApiService {
          SET status = $2,
              failed = CASE WHEN $2 = 'FAILED' THEN total ELSE 0 END,
              started_at = NULL,
+             next_attempt_at = CASE
+               WHEN $2 = 'QUEUED' THEN NOW() + ($4::text || ' milliseconds')::interval
+               ELSE NULL
+             END,
              finished_at = CASE WHEN $2 = 'FAILED' THEN NOW() ELSE NULL END,
              last_error = $3
          WHERE id = $1`,
-        [id, status, error],
+        [id, status, error, String(retryDelayMs)],
       );
       await connection.query('COMMIT');
       return status;
@@ -682,6 +736,7 @@ export class ApiService {
          SET status = 'PROCESSING',
              attempts = CASE WHEN status = 'PROCESSING' THEN attempts ELSE attempts + 1 END,
              started_at = COALESCE(started_at, NOW()),
+             next_attempt_at = NULL,
              finished_at = NULL,
              last_error = NULL
          WHERE id = $1`,
@@ -766,7 +821,7 @@ export class ApiService {
 
   async getSync(id: string, clientId: number) {
     const run = await this.pool.query(
-      `SELECT id,status,total,completed,failed,created_at,finished_at
+      `SELECT id,status,total,completed,failed,attempts,next_attempt_at,created_at,finished_at
        FROM sync_runs WHERE id=$1 AND client_id=$2`,
       [id, clientId],
     );

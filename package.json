@@ -14,6 +14,7 @@
     "api": "tsx src/api/main.ts",
     "worker:offline": "tsx src/cli/process-offline-sync.ts",
     "worker:sync": "tsx src/cli/process-offline-sync.ts",
+    "test:worker:recovery": "tsx src/cli/worker-recovery-test.ts",
     "scheduler:monthly": "tsx src/cli/schedule-monthly-syncs.ts",
     "test:api:flow": "tsx src/cli/api-flow-test.ts",
     "test": "vitest run",

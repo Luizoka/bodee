@@ -133,6 +133,11 @@ buscar no máximo uma pendência e encerrar, use `pnpm worker:offline -- --once`
 Ele existe apenas para desenvolvimento: não acessa a Equatorial nem usa
 credenciais reais.
 
+Após uma falha temporária, o worker espera progressivamente antes de tentar
+novamente: por padrão, 10 s, 20 s e 40 s (até uma hora). Ajuste a primeira espera
+com `WORKER_RETRY_BASE_DELAY_MS`; a próxima data fica em `next_attempt_at` nas
+consultas da sincronização e da fila administrativa.
+
 O worker usa `SYNC_PROVIDER=offline` por padrão. A arquitetura também aceita
 `SYNC_PROVIDER=equatorial`, que já valida as credenciais criptografadas, mas só
 deve ser ativado quando a integração real da Equatorial estiver habilitada. O
@@ -235,6 +240,17 @@ mesmo worker contínuo:
 ```cmd
 pnpm test:api:flow -- --use-running-worker
 ```
+
+Para testar recuperação de falhas do worker, primeiro pare qualquer
+`pnpm worker:sync` em execução. Em seguida, rode:
+
+```bash
+pnpm test:worker:recovery
+```
+
+O teste simula uma falha temporária, reinicia o worker com sucesso, força uma
+falha terminal e confirma o reprocessamento manual. Todos os dados de teste são
+removidos ao final.
 
 `pnpm test:equatorial` é intencionalmente um teste real opcional e não deve ser
 executado automaticamente no CI.

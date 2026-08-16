@@ -12,6 +12,11 @@ function positiveEnvironmentValue(name: string, fallback: number): number {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
+function nonNegativeEnvironmentValue(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -31,6 +36,7 @@ async function processClaimedSync(
   service: ApiService,
   claim: ClaimedSync,
   maxAttempts: number,
+  retryBaseDelayMs: number,
   provider: InvoiceSyncProvider,
 ): Promise<void> {
   try {
@@ -43,6 +49,7 @@ async function processClaimedSync(
     const status = await service.recordOfflineSyncFailure(
       claim.id,
       maxAttempts,
+      retryBaseDelayMs,
     );
     process.stderr.write(
       `${JSON.stringify({
@@ -59,14 +66,18 @@ async function processSpecificSync(
   service: ApiService,
   syncId: string,
   maxAttempts: number,
+  retryBaseDelayMs: number,
+  staleAfterMs: number,
   provider: InvoiceSyncProvider,
 ): Promise<void> {
+  const claim = await service.claimSyncById(syncId, staleAfterMs);
+  if (!claim) throw new Error('Sincronização não está disponível para processamento.');
   try {
     const result = await service.processSync(syncId, provider);
     if (!result) throw new Error('Sincronização não encontrada.');
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
-    await service.recordOfflineSyncFailure(syncId, maxAttempts);
+    await service.recordOfflineSyncFailure(syncId, maxAttempts, retryBaseDelayMs);
     throw error;
   }
 }
@@ -89,6 +100,10 @@ async function run(): Promise<void> {
   const pollIntervalMs = positiveEnvironmentValue('WORKER_POLL_INTERVAL_MS', 1_000);
   const staleAfterMs = positiveEnvironmentValue('WORKER_STALE_AFTER_MS', 300_000);
   const maxAttempts = positiveEnvironmentValue('WORKER_MAX_ATTEMPTS', 3);
+  const retryBaseDelayMs = nonNegativeEnvironmentValue(
+    'WORKER_RETRY_BASE_DELAY_MS',
+    10_000,
+  );
   const pool = new Pool({ connectionString: databaseUrl });
   let running = true;
   const stop = () => {
@@ -103,7 +118,14 @@ async function run(): Promise<void> {
     const provider = createProvider(service);
 
     if (syncId) {
-      await processSpecificSync(service, syncId, maxAttempts, provider);
+      await processSpecificSync(
+        service,
+        syncId,
+        maxAttempts,
+        retryBaseDelayMs,
+        staleAfterMs,
+        provider,
+      );
       return;
     }
 
@@ -112,6 +134,7 @@ async function run(): Promise<void> {
         event: 'worker.offline.started',
         pollIntervalMs,
         maxAttempts,
+        retryBaseDelayMs,
         provider: provider.name,
       })}\n`,
     );
@@ -125,7 +148,14 @@ async function run(): Promise<void> {
             attempts: claim.attempts,
           })}\n`,
         );
-        await processClaimedSync(service, claim, maxAttempts, provider);
+        await processClaimedSync(
+          service,
+          claim,
+          maxAttempts,
+          retryBaseDelayMs,
+          provider,
+        );
+        if (runOnce) break;
       } else if (runOnce) {
         break;
       } else {
