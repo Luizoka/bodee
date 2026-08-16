@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   Req,
   StreamableFile,
   UseGuards,
@@ -145,6 +146,32 @@ export class ApiController {
     const revoked = await this.service.revokeClientApiKey(clientId, keyId);
     if (!revoked) throw new NotFoundException('API key não encontrada.');
     return { revoked: true };
+  }
+
+  @Get('admin/sync-runs')
+  @UseGuards(AdminApiKeyGuard)
+  listAdminSyncRuns(@Query() query: unknown) {
+    const input = parseBody(
+      z.object({
+        status: z.enum(['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED']).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      }),
+      query,
+    );
+    return this.service.listAdminSyncRuns(input.status, input.limit);
+  }
+
+  @Post('admin/sync-runs/:id/requeue')
+  @UseGuards(AdminApiKeyGuard)
+  async requeueFailedSync(@Param('id') id: string) {
+    if (!z.uuid().safeParse(id).success) {
+      throw new BadRequestException('Id de sincronização inválido.');
+    }
+    const requeued = await this.service.requeueFailedSync(id);
+    if (!requeued) {
+      throw new NotFoundException('Sincronização falha não encontrada.');
+    }
+    return { requeued: true };
   }
 
   @Post('sync')

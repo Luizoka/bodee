@@ -130,6 +130,51 @@ describe.skipIf(!databaseUrl || !encryptionKey)(
         status: 'FAILED',
         failed: 1,
       });
+      expect(await service.requeueFailedSync(syncId)).toBe(true);
+      expect(await service.getSync(syncId, clientId)).toMatchObject({
+        status: 'QUEUED',
+        failed: 0,
+      });
+      expect(await service.requeueFailedSync(syncId)).toBe(false);
+    });
+
+    it('agenda mensalmente somente contas sem fatura ou trabalho pendente', async () => {
+      const suffix = randomUUID().slice(0, 8);
+      const client = await service.createClient({
+        type: 'PJ',
+        name: `Cliente Scheduler ${suffix}`,
+        document: '33333333000133',
+      });
+      const clientId = Number(client.id);
+      clientIds.push(clientId);
+      const firstAccount = `schedule-a-${suffix}`;
+      const secondAccount = `schedule-b-${suffix}`;
+      await service.addAccount(clientId, firstAccount);
+      await service.addAccount(clientId, secondAccount);
+
+      const firstSchedule = await service.scheduleMonthlySyncs('2026/09');
+      expect(firstSchedule.syncsCreated).toBeGreaterThanOrEqual(1);
+      expect(firstSchedule.itemsCreated).toBeGreaterThanOrEqual(2);
+      const ownRun = await pool.query<{ id: string }>(
+        `SELECT id FROM sync_runs
+         WHERE client_id = $1 AND status = 'QUEUED' AND total = 2
+         ORDER BY created_at DESC LIMIT 1`,
+        [clientId],
+      );
+      const syncId = ownRun.rows[0]?.id ?? '';
+      expect(syncId).not.toBe('');
+      expect(await service.scheduleMonthlySyncs('2026/09')).toMatchObject({
+        syncsCreated: 0,
+        itemsCreated: 0,
+      });
+      await service.processOfflineSync(syncId);
+      expect(await service.scheduleMonthlySyncs('2026/09')).toMatchObject({
+        syncsCreated: 0,
+        itemsCreated: 0,
+      });
+      await expect(service.scheduleMonthlySyncs('09/2026')).rejects.toThrow(
+        'Competência deve estar no formato AAAA/MM.',
+      );
     });
   },
 );

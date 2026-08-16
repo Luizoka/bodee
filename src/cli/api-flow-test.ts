@@ -104,6 +104,10 @@ async function run(): Promise<void> {
     assertStatus(unauthenticatedAdmin.response, 401, 'admin sem chave');
     reportStep('admin_sem_chave_bloqueado');
 
+    const unauthenticatedAdminRuns = await requestJson(baseUrl, '/admin/sync-runs');
+    assertStatus(unauthenticatedAdminRuns.response, 401, 'fila administrativa sem chave');
+    reportStep('fila_administrativa_sem_chave_bloqueada');
+
     const createClient = async (name: string, document: string): Promise<number> => {
       const created = await requestJson(baseUrl, '/clients', {
         method: 'POST',
@@ -206,6 +210,18 @@ async function run(): Promise<void> {
     }
     const syncId = sync.body.syncId;
     reportStep('sincronizacao_criada_pelo_cliente_autenticado');
+
+    const adminRuns = await requestJson(baseUrl, '/admin/sync-runs?status=QUEUED', {
+      headers: adminHeaders,
+    });
+    assertStatus(adminRuns.response, 200, 'listagem administrativa da fila');
+    if (
+      !Array.isArray(adminRuns.body) ||
+      !adminRuns.body.some((run) => (run as Record<string, unknown>).id === syncId)
+    ) {
+      throw new Error('A sincronização não apareceu na fila administrativa.');
+    }
+    reportStep('administrador_consulta_fila');
 
     const ownSync = await requestJson(baseUrl, `/sync/${syncId}`, {
       headers: clientAHeaders,

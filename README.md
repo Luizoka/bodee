@@ -133,6 +133,47 @@ buscar no máximo uma pendência e encerrar, use `pnpm worker:offline -- --once`
 Ele existe apenas para desenvolvimento: não acessa a Equatorial nem usa
 credenciais reais.
 
+O worker usa `SYNC_PROVIDER=offline` por padrão. A arquitetura também aceita
+`SYNC_PROVIDER=equatorial`, que já valida as credenciais criptografadas, mas só
+deve ser ativado quando a integração real da Equatorial estiver habilitada. O
+comando genérico do worker é `pnpm worker:sync`; `pnpm worker:offline` continua
+como atalho compatível para o modo local.
+
+## Agendamento mensal
+
+O agendador procura todas as contas ativas e cria trabalhos `QUEUED` somente
+para as que ainda não possuem fatura da competência. Ele não baixa arquivos;
+deixe `pnpm worker:sync` em execução para processar a fila. A operação é
+idempotente: repeti-la não duplica itens pendentes nem faturas já baixadas.
+
+Para agendar a competência do mês atual (fuso `America/Sao_Paulo`):
+
+```bash
+pnpm scheduler:monthly
+```
+
+Para executar uma competência específica durante testes:
+
+```bash
+pnpm scheduler:monthly -- --competence=2026/08
+```
+
+Em produção, configure esse comando no Agendador de Tarefas do Windows ou no
+cron para rodar uma vez por mês. `SCHEDULER_TIME_ZONE` permite mudar o fuso.
+
+## Operação administrativa
+
+Com a chave administrativa, acompanhe a fila e reenvie somente execuções que
+terminaram em falha:
+
+```text
+GET  /api/v1/admin/sync-runs?status=FAILED
+POST /api/v1/admin/sync-runs/:id/requeue
+```
+
+O reprocessamento zera as tentativas e devolve os itens da execução para
+`QUEUED`; o worker ativo volta a processá-los normalmente.
+
 No modo offline, cada processamento gera um PDF de teste em
 `INVOICE_STORAGE_DIR` (padrão `output/invoices`). O cliente autenticado pode
 baixar somente a própria fatura com `GET /api/v1/invoices/:id/download`.

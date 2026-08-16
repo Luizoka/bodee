@@ -7,10 +7,11 @@ import {
 } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { PDFDocument } from 'pdf-lib';
 import { Pool } from 'pg';
 
 import { LocalInvoiceStorageService } from './local-invoice-storage.service';
+import { OfflineInvoiceProvider } from '../providers/offline-invoice.provider';
+import type { InvoiceSyncProvider } from '../providers/invoice-sync.provider';
 
 type ClientType = 'PF' | 'PJ';
 
@@ -27,6 +28,8 @@ interface SyncItemInput {
   competence: string;
 }
 
+type SyncRunStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
 export interface EquatorialCredentials {
   document: string;
   birthDate: string;
@@ -35,6 +38,13 @@ export interface EquatorialCredentials {
 export interface ClaimedSync {
   id: string;
   attempts: number;
+}
+
+export interface MonthlyScheduleResult {
+  competence: string;
+  syncsCreated: number;
+  itemsCreated: number;
+  syncIds: string[];
 }
 
 function encrypt(value: string, keyHex: string): string {
@@ -382,6 +392,135 @@ export class ApiService {
     }
   }
 
+  /** Enfileira apenas contas que ainda não têm fatura ou trabalho ativo. */
+  async scheduleMonthlySyncs(competence: string): Promise<MonthlyScheduleResult> {
+    if (!/^\d{4}\/(0[1-9]|1[0-2])$/.test(competence)) {
+      throw new Error('Competência deve estar no formato AAAA/MM.');
+    }
+
+    const connection = await this.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const clients = await connection.query<{ id: number }>(
+        'SELECT id FROM clients WHERE active = TRUE ORDER BY id FOR UPDATE',
+      );
+      const syncIds: string[] = [];
+      let itemsCreated = 0;
+
+      for (const client of clients.rows) {
+        const clientId = Number(client.id);
+        const accounts = await connection.query<{ account: string }>(
+          `SELECT account FROM client_accounts
+           WHERE client_id = $1 AND active = TRUE
+           ORDER BY id FOR UPDATE`,
+          [clientId],
+        );
+        if (accounts.rowCount === 0) continue;
+
+        const pending = await connection.query<{ account: string }>(
+          `SELECT candidate.account
+           FROM unnest($2::text[]) AS candidate(account)
+           WHERE NOT EXISTS (
+             SELECT 1 FROM invoices invoice
+             WHERE invoice.client_id = $1 AND invoice.account = candidate.account
+               AND invoice.competence = $3
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM sync_items item
+             INNER JOIN sync_runs run ON run.id = item.sync_id
+             WHERE item.client_id = $1 AND item.account = candidate.account
+               AND item.competence = $3
+               AND run.status IN ('QUEUED', 'PROCESSING')
+           )`,
+          [
+            clientId,
+            accounts.rows.map((account) => account.account),
+            competence,
+          ],
+        );
+        if (pending.rows.length === 0) continue;
+
+        const syncId = randomUUID();
+        await connection.query(
+          `INSERT INTO sync_runs (id,client_id,status,total)
+           VALUES ($1,$2,'QUEUED',$3)`,
+          [syncId, clientId, pending.rows.length],
+        );
+        for (const item of pending.rows) {
+          await connection.query(
+            `INSERT INTO sync_items (sync_id,client_id,account,competence)
+             VALUES ($1,$2,$3,$4)`,
+            [syncId, clientId, item.account, competence],
+          );
+        }
+        syncIds.push(syncId);
+        itemsCreated += pending.rows.length;
+      }
+
+      await connection.query('COMMIT');
+      return { competence, syncsCreated: syncIds.length, itemsCreated, syncIds };
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listAdminSyncRuns(status?: SyncRunStatus, limit = 50) {
+    const values: (string | number)[] = [];
+    const where = status
+      ? (values.push(status), 'WHERE run.status = $1')
+      : '';
+    values.push(limit);
+    const runs = await this.pool.query(
+      `SELECT run.id,run.client_id,client.name AS client_name,run.status,
+              run.total,run.completed,run.failed,run.attempts,run.last_error,
+              run.created_at,run.started_at,run.finished_at
+       FROM sync_runs run
+       INNER JOIN clients client ON client.id = run.client_id
+       ${where}
+       ORDER BY run.created_at DESC
+       LIMIT $${values.length}`,
+      values,
+    );
+    return runs.rows;
+  }
+
+  async requeueFailedSync(id: string): Promise<boolean> {
+    const connection = await this.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const run = await connection.query<{ status: SyncRunStatus }>(
+        'SELECT status FROM sync_runs WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      if (run.rows[0]?.status !== 'FAILED') {
+        await connection.query('ROLLBACK');
+        return false;
+      }
+      await connection.query(
+        `UPDATE sync_items SET status = 'PENDING', error = NULL
+         WHERE sync_id = $1 AND status = 'FAILED'`,
+        [id],
+      );
+      await connection.query(
+        `UPDATE sync_runs
+         SET status = 'QUEUED', completed = 0, failed = 0, attempts = 0,
+             started_at = NULL, finished_at = NULL, last_error = NULL
+         WHERE id = $1`,
+        [id],
+      );
+      await connection.query('COMMIT');
+      return true;
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async claimNextQueuedSync(staleAfterMs: number): Promise<ClaimedSync | undefined> {
     const connection = await this.pool.connect();
     try {
@@ -473,6 +612,10 @@ export class ApiService {
   }
 
   async processOfflineSync(id: string) {
+    return this.processSync(id, new OfflineInvoiceProvider());
+  }
+
+  async processSync(id: string, provider: InvoiceSyncProvider) {
     const connection = await this.pool.connect();
     try {
       await connection.query('BEGIN');
@@ -502,20 +645,12 @@ export class ApiService {
       );
 
       for (const item of items.rows) {
-        const document = await PDFDocument.create();
-        const page = document.addPage([595, 842]);
-        page.drawText('Fatura de teste - processamento offline', {
-          x: 50,
-          y: 780,
-          size: 16,
+        const providerFile = await provider.downloadInvoice({
+          clientId: Number(item.client_id),
+          account: String(item.account),
+          competence: String(item.competence),
         });
-        page.drawText(`Conta: ${item.account}`, { x: 50, y: 740, size: 12 });
-        page.drawText(`Competência: ${item.competence}`, {
-          x: 50,
-          y: 720,
-          size: 12,
-        });
-        const content = Buffer.from(await document.save());
+        const content = providerFile.content;
         const saved = await this.storage.save(
           Number(item.client_id),
           String(item.account),

@@ -3,6 +3,9 @@ import 'dotenv/config';
 import { Pool } from 'pg';
 
 import { ApiService, type ClaimedSync } from '../api/api.service';
+import { EquatorialInvoiceProvider } from '../providers/equatorial-invoice.provider';
+import type { InvoiceSyncProvider } from '../providers/invoice-sync.provider';
+import { OfflineInvoiceProvider } from '../providers/offline-invoice.provider';
 
 function positiveEnvironmentValue(name: string, fallback: number): number {
   const value = Number(process.env[name] ?? fallback);
@@ -13,13 +16,25 @@ function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function createProvider(service: ApiService): InvoiceSyncProvider {
+  const provider = process.env.SYNC_PROVIDER ?? 'offline';
+  if (provider === 'offline') return new OfflineInvoiceProvider();
+  if (provider === 'equatorial') {
+    return new EquatorialInvoiceProvider((clientId) =>
+      service.getEquatorialCredentialsForWorker(clientId),
+    );
+  }
+  throw new Error('SYNC_PROVIDER deve ser offline ou equatorial.');
+}
+
 async function processClaimedSync(
   service: ApiService,
   claim: ClaimedSync,
   maxAttempts: number,
+  provider: InvoiceSyncProvider,
 ): Promise<void> {
   try {
-    const result = await service.processOfflineSync(claim.id);
+    const result = await service.processSync(claim.id, provider);
     if (!result) throw new Error('Sincronização não encontrada.');
     process.stdout.write(
       `${JSON.stringify({ event: 'worker.offline.completed', ...result })}\n`,
@@ -44,9 +59,10 @@ async function processSpecificSync(
   service: ApiService,
   syncId: string,
   maxAttempts: number,
+  provider: InvoiceSyncProvider,
 ): Promise<void> {
   try {
-    const result = await service.processOfflineSync(syncId);
+    const result = await service.processSync(syncId, provider);
     if (!result) throw new Error('Sincronização não encontrada.');
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
@@ -84,9 +100,10 @@ async function run(): Promise<void> {
   try {
     const service = new ApiService(pool, encryptionKey);
     await service.initialize();
+    const provider = createProvider(service);
 
     if (syncId) {
-      await processSpecificSync(service, syncId, maxAttempts);
+      await processSpecificSync(service, syncId, maxAttempts, provider);
       return;
     }
 
@@ -95,6 +112,7 @@ async function run(): Promise<void> {
         event: 'worker.offline.started',
         pollIntervalMs,
         maxAttempts,
+        provider: provider.name,
       })}\n`,
     );
     do {
@@ -107,7 +125,7 @@ async function run(): Promise<void> {
             attempts: claim.attempts,
           })}\n`,
         );
-        await processClaimedSync(service, claim, maxAttempts);
+        await processClaimedSync(service, claim, maxAttempts, provider);
       } else if (runOnce) {
         break;
       } else {
