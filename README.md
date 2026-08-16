@@ -98,6 +98,18 @@ As rotas locais estão sob o prefixo `/api/v1`:
 - `POST /sync`, `GET /sync/:id` e `GET /invoices` exigem uma API key ativa do
   próprio cliente.
 
+A documentação interativa Swagger está disponível em:
+
+```text
+http://localhost:3000/api/docs
+```
+
+Use o botão `Authorize`: `adminApiKey` serve para cadastro e operação; 
+`clientApiKey` serve para sincronizações, faturas e downloads do cliente.
+
+Para saber quais rotas pertencem à administração, ao cliente final e aos
+processos internos, consulte [Acesso à API por papel](./docs/acesso-api.md).
+
 Envie as chaves sempre no header:
 
 ```text

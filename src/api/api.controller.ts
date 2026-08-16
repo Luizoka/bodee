@@ -15,6 +15,14 @@ import {
   StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { z } from 'zod';
 
 import {
@@ -26,16 +34,27 @@ import {
 import { ApiService } from './api.service';
 
 @Controller()
+@ApiTags('FaturaSync')
 export class ApiController {
   constructor(@Inject(ApiService) private readonly service: ApiService) {}
 
   @Get('health')
+  @ApiOperation({ summary: 'Verifica se a API e o banco estão disponíveis' })
   health() {
     return this.service.health();
   }
 
   @Post('clients')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Cria um cliente' })
+  @ApiBody({
+    schema: {
+      example: {
+        type: 'PF', name: 'Maria Silva', document: '00000000000', birthDate: '01/01/1990',
+      },
+    },
+  })
   createClient(@Body() body: unknown) {
     const input = parseBody(
       z
@@ -74,6 +93,9 @@ export class ApiController {
 
   @Post('clients/:id/accounts')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Associa uma conta contrato ao cliente' })
+  @ApiParam({ name: 'id', type: Number })
   async addAccount(@Param('id', ParseIntPipe) id: number, @Body() body: unknown) {
     const { account } = parseBody(
       z.object({ account: z.string().trim().min(1).max(64) }),
@@ -90,6 +112,9 @@ export class ApiController {
 
   @Delete('clients/:id')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Remove cliente, dados e arquivos associados' })
+  @ApiParam({ name: 'id', type: Number })
   async deleteClient(@Param('id', ParseIntPipe) id: number) {
     const deleted = await this.service.deleteClient(id);
     if (!deleted) throw new NotFoundException('Cliente não encontrado.');
@@ -101,6 +126,9 @@ export class ApiController {
 
   @Put('clients/:id/providers/equatorial/credentials')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Configura credenciais criptografadas da Equatorial' })
+  @ApiParam({ name: 'id', type: Number })
   async setEquatorialCredentials(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: unknown,
@@ -128,12 +156,18 @@ export class ApiController {
 
   @Get('clients/:id/providers/equatorial/credentials/status')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Informa se as credenciais Equatorial estão configuradas' })
+  @ApiParam({ name: 'id', type: Number })
   async getEquatorialCredentialStatus(@Param('id', ParseIntPipe) id: number) {
     return { configured: await this.service.getEquatorialCredentialStatus(id) };
   }
 
   @Delete('clients/:id/providers/equatorial/credentials')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Remove credenciais Equatorial' })
+  @ApiParam({ name: 'id', type: Number })
   async deleteEquatorialCredentials(@Param('id', ParseIntPipe) id: number) {
     const deleted = await this.service.deleteEquatorialCredentials(id);
     if (!deleted) throw new NotFoundException('Credenciais não encontradas.');
@@ -148,6 +182,9 @@ export class ApiController {
 
   @Post('clients/:id/api-keys')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Emite API key de cliente (exibida somente uma vez)' })
+  @ApiParam({ name: 'id', type: Number })
   async createClientApiKey(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: unknown,
@@ -167,6 +204,10 @@ export class ApiController {
 
   @Delete('clients/:clientId/api-keys/:keyId')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Revoga API key de cliente' })
+  @ApiParam({ name: 'clientId', type: Number })
+  @ApiParam({ name: 'keyId', type: String })
   async revokeClientApiKey(
     @Param('clientId', ParseIntPipe) clientId: number,
     @Param('keyId') keyId: string,
@@ -182,6 +223,9 @@ export class ApiController {
 
   @Get('admin/audit-logs')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Lista eventos de auditoria sem expor segredos' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   listAuditLogs(@Query() query: unknown) {
     const { limit } = parseBody(
       z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }),
@@ -192,6 +236,10 @@ export class ApiController {
 
   @Get('admin/sync-runs')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Lista execuções da fila administrativa' })
+  @ApiQuery({ name: 'status', required: false, enum: ['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED'] })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   listAdminSyncRuns(@Query() query: unknown) {
     const input = parseBody(
       z.object({
@@ -205,6 +253,9 @@ export class ApiController {
 
   @Post('admin/sync-runs/:id/requeue')
   @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({ summary: 'Devolve uma execução FAILED para a fila' })
+  @ApiParam({ name: 'id', format: 'uuid' })
   async requeueFailedSync(@Param('id') id: string) {
     if (!z.uuid().safeParse(id).success) {
       throw new BadRequestException('Id de sincronização inválido.');
@@ -221,6 +272,13 @@ export class ApiController {
 
   @Post('sync')
   @UseGuards(ClientApiKeyGuard)
+  @ApiBearerAuth('clientApiKey')
+  @ApiOperation({ summary: 'Solicita sincronização das contas do cliente autenticado' })
+  @ApiBody({
+    schema: {
+      example: { accounts: [{ account: '000003462412', competences: ['2026/08'] }] },
+    },
+  })
   async createSync(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const input = parseBody(
       z.object({
@@ -254,6 +312,9 @@ export class ApiController {
 
   @Get('sync/:id')
   @UseGuards(ClientApiKeyGuard)
+  @ApiBearerAuth('clientApiKey')
+  @ApiOperation({ summary: 'Consulta sincronização do cliente autenticado' })
+  @ApiParam({ name: 'id', format: 'uuid' })
   async getSync(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     const sync = await this.service.getSync(
       id,
@@ -265,12 +326,17 @@ export class ApiController {
 
   @Get('invoices')
   @UseGuards(ClientApiKeyGuard)
+  @ApiBearerAuth('clientApiKey')
+  @ApiOperation({ summary: 'Lista faturas do cliente autenticado' })
   listInvoices(@Req() request: AuthenticatedRequest) {
     return this.service.listInvoices(getAuthenticatedClientId(request));
   }
 
   @Get('invoices/:id/download')
   @UseGuards(ClientApiKeyGuard)
+  @ApiBearerAuth('clientApiKey')
+  @ApiOperation({ summary: 'Baixa PDF privado de uma fatura' })
+  @ApiParam({ name: 'id', type: Number })
   async downloadInvoice(
     @Req() request: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,

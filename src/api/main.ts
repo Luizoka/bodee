@@ -2,6 +2,7 @@ import 'dotenv/config';
 import 'reflect-metadata';
 
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { ApiModule } from './api.module';
 import { ApiService } from './api.service';
@@ -27,6 +28,25 @@ async function main(): Promise<void> {
   const app = await NestFactory.create(ApiModule);
   app.setGlobalPrefix('api/v1');
   await app.get(ApiService).initialize();
+  const document = SwaggerModule.createDocument(
+    app,
+    new DocumentBuilder()
+      .setTitle('FaturaSync API')
+      .setDescription(
+        'API para solicitar, acompanhar e baixar faturas. Use a chave correta no botão Authorize.',
+      )
+      .setVersion('0.1.0')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'API key' },
+        'adminApiKey',
+      )
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'API key' },
+        'clientApiKey',
+      )
+      .build(),
+  );
+  SwaggerModule.setup('api/docs', app, document, { useGlobalPrefix: false });
   await app.listen(Number(process.env.API_PORT ?? 3000), '0.0.0.0');
 }
 
