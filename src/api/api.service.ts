@@ -11,7 +11,10 @@ import { Pool } from 'pg';
 
 import { LocalInvoiceStorageService } from './local-invoice-storage.service';
 import { OfflineInvoiceProvider } from '../providers/offline-invoice.provider';
-import type { InvoiceSyncProvider } from '../providers/invoice-sync.provider';
+import {
+  invoiceInputKey,
+  type InvoiceSyncProvider,
+} from '../providers/invoice-sync.provider';
 
 type ClientType = 'PF' | 'PJ';
 
@@ -748,12 +751,22 @@ export class ApiService {
         [id],
       );
 
+      const inputs = items.rows.map((item) => ({
+        clientId: Number(item.client_id),
+        account: String(item.account),
+        competence: String(item.competence),
+      }));
+      const providerFiles = await provider.downloadInvoices(inputs);
       for (const item of items.rows) {
-        const providerFile = await provider.downloadInvoice({
+        const input = {
           clientId: Number(item.client_id),
           account: String(item.account),
           competence: String(item.competence),
-        });
+        };
+        const providerFile = providerFiles.get(invoiceInputKey(input));
+        if (!providerFile) {
+          throw new Error('Provider não retornou arquivo para um item da sincronização.');
+        }
         const content = providerFile.content;
         const saved = await this.storage.save(
           Number(item.client_id),

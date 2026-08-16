@@ -8,7 +8,11 @@ export interface ProviderInvoiceFile {
   content: Buffer;
 }
 
+export function invoiceInputKey(input: InvoiceProviderInput): string {
+  return `${input.clientId}:${input.account}:${input.competence}`;
+}
+
 export interface InvoiceSyncProvider {
   readonly name: 'offline' | 'equatorial';
-  downloadInvoice(input: InvoiceProviderInput): Promise<ProviderInvoiceFile>;
+  downloadInvoices(inputs: InvoiceProviderInput[]): Promise<Map<string, ProviderInvoiceFile>>;
 }

@@ -150,6 +150,11 @@ novamente: por padrão, 10 s, 20 s e 40 s (até uma hora). Ajuste a primeira esp
 com `WORKER_RETRY_BASE_DELAY_MS`; a próxima data fica em `next_attempt_at` nas
 consultas da sincronização e da fila administrativa.
 
+Quando o provider Equatorial for habilitado, todos os itens de um mesmo `syncId`
+serão processados em lote: uma sessão por cliente, vários downloads e descarte
+de token, cookies e contexto do navegador ao terminar. Esses dados de sessão não
+serão gravados no banco nem nos logs.
+
 O worker usa `SYNC_PROVIDER=offline` por padrão. A arquitetura também aceita
 `SYNC_PROVIDER=equatorial`, que já valida as credenciais criptografadas, mas só
 deve ser ativado quando a integração real da Equatorial estiver habilitada. O

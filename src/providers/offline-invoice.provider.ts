@@ -1,6 +1,8 @@
 import { PDFDocument } from 'pdf-lib';
 
-import type {
+import {
+  invoiceInputKey,
+  type
   InvoiceProviderInput,
   InvoiceSyncProvider,
   ProviderInvoiceFile,
@@ -9,7 +11,7 @@ import type {
 export class OfflineInvoiceProvider implements InvoiceSyncProvider {
   readonly name = 'offline' as const;
 
-  async downloadInvoice(
+  private async createInvoice(
     input: InvoiceProviderInput,
   ): Promise<ProviderInvoiceFile> {
     const document = await PDFDocument.create();
@@ -26,5 +28,11 @@ export class OfflineInvoiceProvider implements InvoiceSyncProvider {
       size: 12,
     });
     return { content: Buffer.from(await document.save()) };
+  }
+
+  async downloadInvoices(inputs: InvoiceProviderInput[]): Promise<Map<string, ProviderInvoiceFile>> {
+    const files = new Map<string, ProviderInvoiceFile>();
+    for (const input of inputs) files.set(invoiceInputKey(input), await this.createInvoice(input));
+    return files;
   }
 }

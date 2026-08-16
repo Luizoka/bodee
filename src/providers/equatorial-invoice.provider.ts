@@ -15,16 +15,17 @@ export class EquatorialInvoiceProvider implements InvoiceSyncProvider {
     ) => Promise<EquatorialCredentials | undefined>,
   ) {}
 
-  async downloadInvoice(
-    input: InvoiceProviderInput,
-  ): Promise<ProviderInvoiceFile> {
-    const credentials = await this.loadCredentials(input.clientId);
-    if (!credentials) {
-      throw new Error('Credenciais da Equatorial não estão configuradas para o cliente.');
+  async downloadInvoices(
+    inputs: InvoiceProviderInput[],
+  ): Promise<Map<string, ProviderInvoiceFile>> {
+    for (const clientId of new Set(inputs.map((input) => input.clientId))) {
+      if (!(await this.loadCredentials(clientId))) {
+        throw new Error('Credenciais da Equatorial não estão configuradas para o cliente.');
+      }
     }
 
-    // A integração real reutilizará essas credenciais apenas durante a execução
-    // do provider. Ela permanece desativada até o portal estar disponível.
+    // A versão real abrirá uma sessão por cliente para todo o lote e descartará
+    // token, cookies e contexto do navegador ao terminar.
     throw new Error(
       'O provider Equatorial ainda não está habilitado. Use SYNC_PROVIDER=offline.',
     );
