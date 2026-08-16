@@ -93,15 +93,41 @@ pnpm api
 As rotas locais estão sob o prefixo `/api/v1`:
 
 - `GET /health` verifica a conexão com o banco;
-- `POST /clients` cria um cliente;
-- `POST /clients/:id/accounts` associa uma conta contrato;
-- `POST /sync` cria uma sincronização;
-- `POST /sync/:id/process-offline` conclui a sincronização com dados simulados;
-- `GET /sync/:id` consulta o andamento;
-- `GET /invoices` e `GET /clients/:id/invoices` listam faturas gravadas.
+- `POST /clients`, `POST /clients/:id/accounts`, `POST /clients/:id/api-keys`
+  e `DELETE /clients/:id/api-keys/:keyId` exigem a chave administrativa;
+- `POST /sync`, `GET /sync/:id` e `GET /invoices` exigem uma API key ativa do
+  próprio cliente.
 
-`process-offline` existe apenas para desenvolvimento local: ele não acessa a
-Equatorial nem grava credenciais reais.
+Envie as chaves sempre no header:
+
+```text
+Authorization: Bearer <chave>
+```
+
+As API keys dos clientes são geradas em `POST /clients/:id/api-keys` e aparecem
+somente nessa resposta; o banco guarda exclusivamente o hash. A API sempre
+restringe sincronizações e faturas ao cliente autenticado, mesmo que outro UUID
+seja informado na URL.
+
+O processamento offline é um worker local, não uma rota HTTP:
+
+```bash
+pnpm worker:offline -- <syncId>
+```
+
+Ele existe apenas para desenvolvimento: não acessa a Equatorial nem usa
+credenciais reais.
+
+Para executar o fluxo completo de segurança e API contra a instância local em
+execução, use:
+
+```bash
+pnpm test:api:flow
+```
+
+O teste cria dois clientes temporários, confirma que um não acessa os dados do
+outro, executa o worker offline, revoga uma API key e remove os dados criados ao
+finalizar.
 
 `pnpm test:equatorial` é intencionalmente um teste real opcional e não deve ser
 executado automaticamente no CI.

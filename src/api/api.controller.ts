@@ -2,16 +2,24 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
-  HttpCode,
   Inject,
   NotFoundException,
   Param,
   ParseIntPipe,
   Post,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
 
+import {
+  AdminApiKeyGuard,
+  ClientApiKeyGuard,
+  getAuthenticatedClientId,
+  type AuthenticatedRequest,
+} from './api-auth.guards';
 import { ApiService } from './api.service';
 
 @Controller()
@@ -24,6 +32,7 @@ export class ApiController {
   }
 
   @Post('clients')
+  @UseGuards(AdminApiKeyGuard)
   createClient(@Body() body: unknown) {
     const input = parseBody(
       z
@@ -56,6 +65,7 @@ export class ApiController {
   }
 
   @Post('clients/:id/accounts')
+  @UseGuards(AdminApiKeyGuard)
   async addAccount(@Param('id', ParseIntPipe) id: number, @Body() body: unknown) {
     const { account } = parseBody(
       z.object({ account: z.string().trim().min(1).max(64) }),
@@ -66,11 +76,45 @@ export class ApiController {
     return accountRecord;
   }
 
+  @Delete('clients/:id')
+  @UseGuards(AdminApiKeyGuard)
+  async deleteClient(@Param('id', ParseIntPipe) id: number) {
+    const deleted = await this.service.deleteClient(id);
+    if (!deleted) throw new NotFoundException('Cliente não encontrado.');
+    return { deleted: true };
+  }
+
+  @Post('clients/:id/api-keys')
+  @UseGuards(AdminApiKeyGuard)
+  async createClientApiKey(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: unknown,
+  ) {
+    const { label } = parseBody(
+      z.object({ label: z.string().trim().min(1).max(120) }),
+      body,
+    );
+    const apiKey = await this.service.createClientApiKey(id, label);
+    if (!apiKey) throw new NotFoundException('Cliente não encontrado.');
+    return apiKey;
+  }
+
+  @Delete('clients/:clientId/api-keys/:keyId')
+  @UseGuards(AdminApiKeyGuard)
+  async revokeClientApiKey(
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @Param('keyId') keyId: string,
+  ) {
+    const revoked = await this.service.revokeClientApiKey(clientId, keyId);
+    if (!revoked) throw new NotFoundException('API key não encontrada.');
+    return { revoked: true };
+  }
+
   @Post('sync')
-  async createSync(@Body() body: unknown) {
+  @UseGuards(ClientApiKeyGuard)
+  createSync(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const input = parseBody(
       z.object({
-        clientId: z.number().int().positive(),
         accounts: z
           .array(
             z.object({
@@ -87,34 +131,24 @@ export class ApiController {
     const items = input.accounts.flatMap(({ account, competences }) =>
       competences.map((competence) => ({ account, competence })),
     );
-    const sync = await this.service.createSync(input.clientId, items);
-    if (!sync) throw new NotFoundException('Cliente não encontrado.');
-    return sync;
+    return this.service.createSync(getAuthenticatedClientId(request), items);
   }
 
   @Get('sync/:id')
-  async getSync(@Param('id') id: string) {
-    const sync = await this.service.getSync(id);
+  @UseGuards(ClientApiKeyGuard)
+  async getSync(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    const sync = await this.service.getSync(
+      id,
+      getAuthenticatedClientId(request),
+    );
     if (!sync) throw new NotFoundException('Sincronização não encontrada.');
     return sync;
   }
 
   @Get('invoices')
-  listInvoices() {
-    return this.service.listInvoices();
-  }
-
-  @Get('clients/:id/invoices')
-  listClientInvoices(@Param('id', ParseIntPipe) id: number) {
-    return this.service.listInvoices(id);
-  }
-
-  @Post('sync/:id/process-offline')
-  @HttpCode(200)
-  async processOffline(@Param('id') id: string) {
-    const sync = await this.service.processOfflineSync(id);
-    if (!sync) throw new NotFoundException('Sincronização não encontrada.');
-    return sync;
+  @UseGuards(ClientApiKeyGuard)
+  listInvoices(@Req() request: AuthenticatedRequest) {
+    return this.service.listInvoices(getAuthenticatedClientId(request));
   }
 }
 

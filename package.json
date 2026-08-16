@@ -12,6 +12,8 @@
     "poc:equatorial": "tsx src/cli/equatorial-poc.ts",
     "poc:offline": "tsx src/cli/equatorial-offline.ts",
     "api": "tsx src/api/main.ts",
+    "worker:offline": "tsx src/cli/process-offline-sync.ts",
+    "test:api:flow": "tsx src/cli/api-flow-test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:equatorial": "tsx src/cli/equatorial-poc.ts"

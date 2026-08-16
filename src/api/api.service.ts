@@ -27,6 +27,10 @@ function encrypt(value: string, keyHex: string): string {
     .join('.');
 }
 
+function hashApiKey(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 @Injectable()
 export class ApiService {
   constructor(
@@ -69,6 +73,7 @@ export class ApiService {
       ALTER TABLE invoices ADD COLUMN IF NOT EXISTS client_id BIGINT REFERENCES clients(id);
       CREATE TABLE IF NOT EXISTS sync_runs (
         id UUID PRIMARY KEY,
+        client_id BIGINT REFERENCES clients(id) ON DELETE CASCADE,
         status TEXT NOT NULL CHECK (status IN ('QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED')),
         total INTEGER NOT NULL DEFAULT 0,
         completed INTEGER NOT NULL DEFAULT 0,
@@ -84,6 +89,20 @@ export class ApiService {
         competence TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
         error TEXT
+      );
+      ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS client_id BIGINT REFERENCES clients(id) ON DELETE CASCADE;
+      ALTER TABLE sync_items DROP CONSTRAINT IF EXISTS sync_items_client_id_fkey;
+      ALTER TABLE sync_items ADD CONSTRAINT sync_items_client_id_fkey
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE;
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id UUID PRIMARY KEY,
+        client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        key_hash CHAR(64) NOT NULL UNIQUE,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        revoked_at TIMESTAMPTZ
       );
     `);
   }
@@ -125,6 +144,74 @@ export class ApiService {
     return result.rows[0];
   }
 
+  async deleteClient(clientId: number): Promise<boolean> {
+    const connection = await this.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const existing = await connection.query(
+        'SELECT id FROM clients WHERE id = $1 FOR UPDATE',
+        [clientId],
+      );
+      if (!existing.rows[0]) {
+        await connection.query('ROLLBACK');
+        return false;
+      }
+      await connection.query('DELETE FROM invoices WHERE client_id = $1', [
+        clientId,
+      ]);
+      await connection.query('DELETE FROM clients WHERE id = $1', [clientId]);
+      await connection.query('COMMIT');
+      return true;
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createClientApiKey(clientId: number, label: string) {
+    const client = await this.pool.query(
+      'SELECT id FROM clients WHERE id = $1 AND active = TRUE',
+      [clientId],
+    );
+    if (!client.rows[0]) return undefined;
+
+    const apiKey = `fsk_${randomBytes(32).toString('base64url')}`;
+    const keyPrefix = apiKey.slice(0, 12);
+    const result = await this.pool.query(
+      `INSERT INTO api_keys (id,client_id,label,key_prefix,key_hash)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING id,client_id,label,key_prefix,created_at`,
+      [randomUUID(), clientId, label, keyPrefix, hashApiKey(apiKey)],
+    );
+
+    return { ...result.rows[0], apiKey };
+  }
+
+  async revokeClientApiKey(clientId: number, keyId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE api_keys SET active = FALSE, revoked_at = NOW()
+       WHERE id = $1 AND client_id = $2 AND active = TRUE`,
+      [keyId, clientId],
+    );
+    return result.rowCount === 1;
+  }
+
+  async authenticateApiKey(apiKey: string): Promise<number | undefined> {
+    const result = await this.pool.query(
+      `SELECT api_keys.client_id
+       FROM api_keys
+       INNER JOIN clients ON clients.id = api_keys.client_id
+       WHERE api_keys.key_hash = $1
+         AND api_keys.active = TRUE
+         AND clients.active = TRUE`,
+      [hashApiKey(apiKey)],
+    );
+    const clientId = result.rows[0]?.client_id;
+    return typeof clientId === 'string' ? Number(clientId) : clientId;
+  }
+
   async createSync(clientId: number, inputItems: SyncItemInput[]) {
     const items = [
       ...new Map(
@@ -156,8 +243,9 @@ export class ApiService {
 
       const id = randomUUID();
       await connection.query(
-        `INSERT INTO sync_runs (id,status,total) VALUES ($1,'QUEUED',$2)`,
-        [id, items.length],
+        `INSERT INTO sync_runs (id,client_id,status,total)
+         VALUES ($1,$2,'QUEUED',$3)`,
+        [id, clientId, items.length],
       );
       for (const item of items) {
         await connection.query(
@@ -257,11 +345,11 @@ export class ApiService {
     }
   }
 
-  async getSync(id: string) {
+  async getSync(id: string, clientId: number) {
     const run = await this.pool.query(
       `SELECT id,status,total,completed,failed,created_at,finished_at
-       FROM sync_runs WHERE id=$1`,
-      [id],
+       FROM sync_runs WHERE id=$1 AND client_id=$2`,
+      [id, clientId],
     );
     if (!run.rows[0]) return undefined;
     const items = await this.pool.query(

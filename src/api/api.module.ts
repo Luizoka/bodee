@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { Pool } from 'pg';
+
+import { AdminApiKeyGuard, ClientApiKeyGuard } from './api-auth.guards';
 import { ApiController } from './api.controller';
 import { ApiService } from './api.service';
 
@@ -12,6 +14,8 @@ import { ApiService } from './api.service';
       useFactory: (pool: Pool) => new ApiService(pool, process.env.CREDENTIALS_ENCRYPTION_KEY ?? ''),
       inject: [Pool],
     },
+    AdminApiKeyGuard,
+    ClientApiKeyGuard,
   ],
 })
 export class ApiModule {}
