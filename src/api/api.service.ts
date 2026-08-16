@@ -47,6 +47,8 @@ export interface MonthlyScheduleResult {
   syncIds: string[];
 }
 
+type AuditActorType = 'ADMIN' | 'CLIENT';
+
 function encrypt(value: string, keyHex: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', Buffer.from(keyHex, 'hex'), iv);
@@ -166,12 +168,59 @@ export class ApiService {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (client_id, provider)
       );
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id BIGSERIAL PRIMARY KEY,
+        actor_type TEXT NOT NULL CHECK (actor_type IN ('ADMIN', 'CLIENT')),
+        actor_client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS audit_logs_created_at_index
+        ON audit_logs (created_at DESC);
     `);
   }
 
   async health(): Promise<{ status: 'ok' }> {
     await this.pool.query('SELECT 1');
     return { status: 'ok' };
+  }
+
+  async recordAuditLog(
+    actorType: AuditActorType,
+    action: string,
+    resourceType: string,
+    options: {
+      actorClientId?: number;
+      resourceId?: string | number;
+      details?: Record<string, string | number | boolean>;
+    } = {},
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO audit_logs
+         (actor_type,actor_client_id,action,resource_type,resource_id,details)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb)`,
+      [
+        actorType,
+        options.actorClientId ?? null,
+        action,
+        resourceType,
+        options.resourceId === undefined ? null : String(options.resourceId),
+        JSON.stringify(options.details ?? {}),
+      ],
+    );
+  }
+
+  async listAuditLogs(limit = 50) {
+    const logs = await this.pool.query(
+      `SELECT id,actor_type,actor_client_id,action,resource_type,resource_id,
+              details,created_at
+       FROM audit_logs ORDER BY created_at DESC LIMIT $1`,
+      [limit],
+    );
+    return logs.rows;
   }
 
   async createClient(input: CreateClientInput) {

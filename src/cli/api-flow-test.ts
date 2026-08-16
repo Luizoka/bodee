@@ -108,6 +108,10 @@ async function run(): Promise<void> {
     assertStatus(unauthenticatedAdminRuns.response, 401, 'fila administrativa sem chave');
     reportStep('fila_administrativa_sem_chave_bloqueada');
 
+    const unauthenticatedAudit = await requestJson(baseUrl, '/admin/audit-logs');
+    assertStatus(unauthenticatedAudit.response, 401, 'auditoria sem chave');
+    reportStep('auditoria_sem_chave_bloqueada');
+
     const createClient = async (name: string, document: string): Promise<number> => {
       const created = await requestJson(baseUrl, '/clients', {
         method: 'POST',
@@ -222,6 +226,22 @@ async function run(): Promise<void> {
       throw new Error('A sincronização não apareceu na fila administrativa.');
     }
     reportStep('administrador_consulta_fila');
+
+    const auditLogs = await requestJson(baseUrl, '/admin/audit-logs?limit=100', {
+      headers: adminHeaders,
+    });
+    assertStatus(auditLogs.response, 200, 'consulta de auditoria');
+    if (
+      !Array.isArray(auditLogs.body) ||
+      !auditLogs.body.some(
+        (log) =>
+          (log as Record<string, unknown>).action === 'sync.requested' &&
+          (log as Record<string, unknown>).resource_id === syncId,
+      )
+    ) {
+      throw new Error('A solicitação de sincronização não foi auditada.');
+    }
+    reportStep('administrador_consulta_auditoria');
 
     const ownSync = await requestJson(baseUrl, `/sync/${syncId}`, {
       headers: clientAHeaders,

@@ -174,6 +174,13 @@ POST /api/v1/admin/sync-runs/:id/requeue
 O reprocessamento zera as tentativas e devolve os itens da execução para
 `QUEUED`; o worker ativo volta a processá-los normalmente.
 
+As ações administrativas e solicitações de sincronização ficam registradas sem
+segredos ou dados pessoais. Consulte os últimos eventos com:
+
+```text
+GET /api/v1/admin/audit-logs?limit=50
+```
+
 No modo offline, cada processamento gera um PDF de teste em
 `INVOICE_STORAGE_DIR` (padrão `output/invoices`). O cliente autenticado pode
 baixar somente a própria fatura com `GET /api/v1/invoices/:id/download`.

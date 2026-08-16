@@ -64,7 +64,12 @@ export class ApiController {
         }),
       body,
     );
-    return this.service.createClient(input);
+    return this.service.createClient(input).then(async (client) => {
+      await this.service.recordAuditLog('ADMIN', 'client.created', 'client', {
+        resourceId: client.id,
+      });
+      return client;
+    });
   }
 
   @Post('clients/:id/accounts')
@@ -76,6 +81,10 @@ export class ApiController {
     );
     const accountRecord = await this.service.addAccount(id, account);
     if (!accountRecord) throw new NotFoundException('Cliente não encontrado.');
+    await this.service.recordAuditLog('ADMIN', 'client.account_added', 'account', {
+      resourceId: accountRecord.id,
+      details: { clientId: id },
+    });
     return accountRecord;
   }
 
@@ -84,6 +93,9 @@ export class ApiController {
   async deleteClient(@Param('id', ParseIntPipe) id: number) {
     const deleted = await this.service.deleteClient(id);
     if (!deleted) throw new NotFoundException('Cliente não encontrado.');
+    await this.service.recordAuditLog('ADMIN', 'client.deleted', 'client', {
+      resourceId: id,
+    });
     return { deleted: true };
   }
 
@@ -105,6 +117,12 @@ export class ApiController {
       credentials,
     );
     if (!configured) throw new NotFoundException('Cliente não encontrado.');
+    await this.service.recordAuditLog(
+      'ADMIN',
+      'equatorial_credentials.configured',
+      'provider_credentials',
+      { resourceId: id, details: { clientId: id } },
+    );
     return { configured: true };
   }
 
@@ -119,6 +137,12 @@ export class ApiController {
   async deleteEquatorialCredentials(@Param('id', ParseIntPipe) id: number) {
     const deleted = await this.service.deleteEquatorialCredentials(id);
     if (!deleted) throw new NotFoundException('Credenciais não encontradas.');
+    await this.service.recordAuditLog(
+      'ADMIN',
+      'equatorial_credentials.deleted',
+      'provider_credentials',
+      { resourceId: id, details: { clientId: id } },
+    );
     return { deleted: true };
   }
 
@@ -134,6 +158,10 @@ export class ApiController {
     );
     const apiKey = await this.service.createClientApiKey(id, label);
     if (!apiKey) throw new NotFoundException('Cliente não encontrado.');
+    await this.service.recordAuditLog('ADMIN', 'api_key.created', 'api_key', {
+      resourceId: apiKey.id,
+      details: { clientId: id, keyPrefix: apiKey.key_prefix },
+    });
     return apiKey;
   }
 
@@ -145,7 +173,21 @@ export class ApiController {
   ) {
     const revoked = await this.service.revokeClientApiKey(clientId, keyId);
     if (!revoked) throw new NotFoundException('API key não encontrada.');
+    await this.service.recordAuditLog('ADMIN', 'api_key.revoked', 'api_key', {
+      resourceId: keyId,
+      details: { clientId },
+    });
     return { revoked: true };
+  }
+
+  @Get('admin/audit-logs')
+  @UseGuards(AdminApiKeyGuard)
+  listAuditLogs(@Query() query: unknown) {
+    const { limit } = parseBody(
+      z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }),
+      query,
+    );
+    return this.service.listAuditLogs(limit);
   }
 
   @Get('admin/sync-runs')
@@ -171,12 +213,15 @@ export class ApiController {
     if (!requeued) {
       throw new NotFoundException('Sincronização falha não encontrada.');
     }
+    await this.service.recordAuditLog('ADMIN', 'sync.requeued', 'sync_run', {
+      resourceId: id,
+    });
     return { requeued: true };
   }
 
   @Post('sync')
   @UseGuards(ClientApiKeyGuard)
-  createSync(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+  async createSync(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const input = parseBody(
       z.object({
         accounts: z
@@ -195,7 +240,16 @@ export class ApiController {
     const items = input.accounts.flatMap(({ account, competences }) =>
       competences.map((competence) => ({ account, competence })),
     );
-    return this.service.createSync(getAuthenticatedClientId(request), items);
+    const clientId = getAuthenticatedClientId(request);
+    const sync = await this.service.createSync(clientId, items);
+    if (sync) {
+      await this.service.recordAuditLog('CLIENT', 'sync.requested', 'sync_run', {
+        actorClientId: clientId,
+        resourceId: sync.syncId,
+        details: { total: sync.total },
+      });
+    }
+    return sync;
   }
 
   @Get('sync/:id')
