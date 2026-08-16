@@ -35,10 +35,12 @@ async function requestJson(
 
 async function runOfflineWorker(syncId: string): Promise<void> {
   const tsxCli = require.resolve('tsx/cli');
+  const workerArguments =
+    process.env.API_FLOW_WORKER_MODE === 'queue' ? ['--once'] : [syncId];
   await new Promise<void>((resolve, reject) => {
     const worker = spawn(
       process.execPath,
-      [tsxCli, 'src/cli/process-offline-sync.ts', syncId],
+      [tsxCli, 'src/cli/process-offline-sync.ts', ...workerArguments],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let stderr = '';
@@ -171,7 +173,11 @@ async function run(): Promise<void> {
     reportStep('cliente_estranho_nao_acessa_sincronizacao_alheia');
 
     await runOfflineWorker(syncId);
-    reportStep('worker_offline_processou_a_sincronizacao');
+    reportStep(
+      process.env.API_FLOW_WORKER_MODE === 'queue'
+        ? 'worker_da_fila_processou_a_sincronizacao'
+        : 'worker_offline_processou_a_sincronizacao',
+    );
 
     const invoicesA = await requestJson(baseUrl, '/invoices', {
       headers: clientAHeaders,

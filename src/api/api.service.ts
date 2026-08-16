@@ -18,6 +18,11 @@ interface SyncItemInput {
   competence: string;
 }
 
+export interface ClaimedSync {
+  id: string;
+  attempts: number;
+}
+
 function encrypt(value: string, keyHex: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', Buffer.from(keyHex, 'hex'), iv);
@@ -78,6 +83,9 @@ export class ApiService {
         total INTEGER NOT NULL DEFAULT 0,
         completed INTEGER NOT NULL DEFAULT 0,
         failed INTEGER NOT NULL DEFAULT 0,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        started_at TIMESTAMPTZ,
+        last_error TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         finished_at TIMESTAMPTZ
       );
@@ -91,6 +99,9 @@ export class ApiService {
         error TEXT
       );
       ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS client_id BIGINT REFERENCES clients(id) ON DELETE CASCADE;
+      ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+      ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS last_error TEXT;
       ALTER TABLE sync_items DROP CONSTRAINT IF EXISTS sync_items_client_id_fkey;
       ALTER TABLE sync_items ADD CONSTRAINT sync_items_client_id_fkey
         FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE;
@@ -264,6 +275,96 @@ export class ApiService {
     }
   }
 
+  async claimNextQueuedSync(staleAfterMs: number): Promise<ClaimedSync | undefined> {
+    const connection = await this.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const run = await connection.query<{ id: string; attempts: number }>(
+        `SELECT id, attempts
+         FROM sync_runs
+         WHERE status = 'QUEUED'
+            OR (
+              status = 'PROCESSING'
+              AND started_at < NOW() - ($1::text || ' milliseconds')::interval
+            )
+         ORDER BY created_at
+         FOR UPDATE SKIP LOCKED
+         LIMIT 1`,
+        [String(staleAfterMs)],
+      );
+      const claimed = run.rows[0];
+      if (!claimed) {
+        await connection.query('ROLLBACK');
+        return undefined;
+      }
+
+      const updated = await connection.query<{ attempts: number }>(
+        `UPDATE sync_runs
+         SET status = 'PROCESSING',
+             attempts = attempts + 1,
+             started_at = NOW(),
+             finished_at = NULL,
+             last_error = NULL
+         WHERE id = $1
+         RETURNING attempts`,
+        [claimed.id],
+      );
+      await connection.query('COMMIT');
+      return { id: claimed.id, attempts: updated.rows[0]?.attempts ?? 1 };
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async recordOfflineSyncFailure(
+    id: string,
+    maxAttempts: number,
+  ): Promise<'QUEUED' | 'FAILED' | undefined> {
+    const connection = await this.pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const run = await connection.query<{ attempts: number; total: number }>(
+        'SELECT attempts, total FROM sync_runs WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      const failedRun = run.rows[0];
+      if (!failedRun) {
+        await connection.query('ROLLBACK');
+        return undefined;
+      }
+
+      const status = failedRun.attempts >= maxAttempts ? 'FAILED' : 'QUEUED';
+      const error = 'Processamento offline não foi concluído.';
+      await connection.query(
+        `UPDATE sync_items
+         SET status = CASE WHEN $2 = 'FAILED' THEN 'FAILED' ELSE 'PENDING' END,
+             error = $3
+         WHERE sync_id = $1 AND status IN ('PENDING', 'PROCESSING')`,
+        [id, status, error],
+      );
+      await connection.query(
+        `UPDATE sync_runs
+         SET status = $2,
+             failed = CASE WHEN $2 = 'FAILED' THEN total ELSE 0 END,
+             started_at = NULL,
+             finished_at = CASE WHEN $2 = 'FAILED' THEN NOW() ELSE NULL END,
+             last_error = $3
+         WHERE id = $1`,
+        [id, status, error],
+      );
+      await connection.query('COMMIT');
+      return status;
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async processOfflineSync(id: string) {
     const connection = await this.pool.connect();
     try {
@@ -278,7 +379,13 @@ export class ApiService {
       }
 
       await connection.query(
-        `UPDATE sync_runs SET status = 'PROCESSING', finished_at = NULL WHERE id = $1`,
+        `UPDATE sync_runs
+         SET status = 'PROCESSING',
+             attempts = CASE WHEN status = 'PROCESSING' THEN attempts ELSE attempts + 1 END,
+             started_at = COALESCE(started_at, NOW()),
+             finished_at = NULL,
+             last_error = NULL
+         WHERE id = $1`,
         [id],
       );
       const items = await connection.query(
@@ -330,7 +437,11 @@ export class ApiService {
       const status = failed > 0 ? 'FAILED' : 'COMPLETED';
       await connection.query(
         `UPDATE sync_runs
-         SET status = $2, completed = $3, failed = $4, finished_at = NOW()
+         SET status = $2,
+             completed = $3,
+             failed = $4,
+             finished_at = NOW(),
+             last_error = NULL
          WHERE id = $1`,
         [id, status, completed, failed],
       );

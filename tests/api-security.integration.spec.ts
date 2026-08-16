@@ -79,5 +79,35 @@ describe.skipIf(!databaseUrl || !encryptionKey)(
       ).toBe(true);
       expect(await service.authenticateApiKey(key?.apiKey ?? '')).toBeUndefined();
     });
+
+    it('reencaminha falhas temporárias e encerra ao atingir o limite de tentativas', async () => {
+      const suffix = randomUUID().slice(0, 8);
+      const client = await service.createClient({
+        type: 'PF',
+        name: `Cliente Retry ${suffix}`,
+        document: '22222222222',
+        birthDate: '01/01/1990',
+      });
+      const clientId = Number(client.id);
+      clientIds.push(clientId);
+      const account = `retry-${suffix}`;
+      await service.addAccount(clientId, account);
+      const sync = await service.createSync(clientId, [
+        { account, competence: '2026/08' },
+      ]);
+      const syncId = sync?.syncId ?? '';
+
+      const firstClaim = await service.claimNextQueuedSync(60_000);
+      expect(firstClaim).toMatchObject({ id: syncId, attempts: 1 });
+      expect(await service.recordOfflineSyncFailure(syncId, 2)).toBe('QUEUED');
+
+      const secondClaim = await service.claimNextQueuedSync(60_000);
+      expect(secondClaim).toMatchObject({ id: syncId, attempts: 2 });
+      expect(await service.recordOfflineSyncFailure(syncId, 2)).toBe('FAILED');
+      expect(await service.getSync(syncId, clientId)).toMatchObject({
+        status: 'FAILED',
+        failed: 1,
+      });
+    });
   },
 );

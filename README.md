@@ -112,8 +112,13 @@ seja informado na URL.
 O processamento offline é um worker local, não uma rota HTTP:
 
 ```bash
-pnpm worker:offline -- <syncId>
+pnpm worker:offline
 ```
+
+Ele busca continuamente sincronizações `QUEUED`, processa uma por vez e atualiza
+o estado para `COMPLETED`, `QUEUED` (nova tentativa) ou `FAILED`. Para processar
+somente uma sincronização específica, use `pnpm worker:offline -- <syncId>`; para
+buscar no máximo uma pendência e encerrar, use `pnpm worker:offline -- --once`.
 
 Ele existe apenas para desenvolvimento: não acessa a Equatorial nem usa
 credenciais reais.
@@ -128,6 +133,13 @@ pnpm test:api:flow
 O teste cria dois clientes temporários, confirma que um não acessa os dados do
 outro, executa o worker offline, revoga uma API key e remove os dados criados ao
 finalizar.
+
+Para validar a reserva automática da fila, em vez de processar um `syncId`
+específico, no Windows execute:
+
+```cmd
+set API_FLOW_WORKER_MODE=queue && pnpm test:api:flow
+```
 
 `pnpm test:equatorial` é intencionalmente um teste real opcional e não deve ser
 executado automaticamente no CI.
