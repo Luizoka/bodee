@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { Pool } from 'pg';
 
 import { AdminApiKeyGuard, ClientApiKeyGuard } from './api-auth.guards';
 import { ApiController } from './api.controller';
 import { ApiService } from './api.service';
 import { LocalInvoiceStorageService } from './local-invoice-storage.service';
+import { ApiRateLimitMiddleware } from './api-rate-limit.middleware';
 
 @Module({
   controllers: [ApiController],
@@ -23,6 +24,11 @@ import { LocalInvoiceStorageService } from './local-invoice-storage.service';
     LocalInvoiceStorageService,
     AdminApiKeyGuard,
     ClientApiKeyGuard,
+    ApiRateLimitMiddleware,
   ],
 })
-export class ApiModule {}
+export class ApiModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(ApiRateLimitMiddleware).forRoutes('*');
+  }
+}

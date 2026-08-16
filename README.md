@@ -181,6 +181,15 @@ segredos ou dados pessoais. Consulte os últimos eventos com:
 GET /api/v1/admin/audit-logs?limit=50
 ```
 
+## Limite de requisições
+
+Exceto por `GET /health`, a API limita requisições por IP em janelas de um
+minuto: 60 nas rotas administrativas e 120 nas rotas de cliente. Ao exceder,
+responde `HTTP 429` e informa o header `Retry-After`. Ajuste
+`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_ADMIN_MAX` e `RATE_LIMIT_CLIENT_MAX` no
+`.env`. Em ambiente com proxy reverso confiável, defina
+`RATE_LIMIT_TRUST_PROXY=true` para usar `X-Forwarded-For`.
+
 No modo offline, cada processamento gera um PDF de teste em
 `INVOICE_STORAGE_DIR` (padrão `output/invoices`). O cliente autenticado pode
 baixar somente a própria fatura com `GET /api/v1/invoices/:id/download`.
