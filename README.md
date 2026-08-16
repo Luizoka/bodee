@@ -161,6 +161,23 @@ pnpm scheduler:monthly -- --competence=2026/08
 Em produção, configure esse comando no Agendador de Tarefas do Windows ou no
 cron para rodar uma vez por mês. `SCHEDULER_TIME_ZONE` permite mudar o fuso.
 
+No Windows, o projeto inclui um script para criar a tarefa. No PowerShell, na
+raiz do projeto, execute uma única vez (o padrão é dia 5 às 08:00):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\register-monthly-scheduler.ps1
+```
+
+Para escolher outro dia e horário, por exemplo dia 10 às 09:30:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\register-monthly-scheduler.ps1 -Day 10 -At 09:30
+```
+
+A tarefa grava sua saída em `output/scheduler.log`. Para dispará-la uma vez e
+validar, use `schtasks /Run /TN "FaturaSync - Agendamento Mensal"`; para
+removê-la, execute `scripts\unregister-monthly-scheduler.ps1`.
+
 ## Operação administrativa
 
 Com a chave administrativa, acompanhe a fila e reenvie somente execuções que
