@@ -4,12 +4,13 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    dockerCommand: sh scripts/start-render-api.sh
     healthCheckPath: /api/v1/health
     envVars:
       - key: ADMIN_API_KEY
         sync: false
       - key: PLAYWRIGHT_HEADLESS
-        value: 'true'
+        value: 'false'
       - key: PLAYWRIGHT_BROWSER_CHANNEL
         value: chromium
       - key: PLAYWRIGHT_TIMEOUT_MS

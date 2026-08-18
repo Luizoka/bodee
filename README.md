@@ -119,7 +119,7 @@ repositório.
 
 ```env
 ADMIN_API_KEY=gere-uma-chave-aleatoria-com-pelo-menos-32-caracteres
-PLAYWRIGHT_HEADLESS=true
+PLAYWRIGHT_HEADLESS=false
 PLAYWRIGHT_BROWSER_CHANNEL=chromium
 PLAYWRIGHT_TIMEOUT_MS=60000
 EQUATORIAL_API_TIMEOUT_MS=30000

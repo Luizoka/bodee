@@ -15,4 +15,4 @@ COPY . .
 RUN pnpm build && pnpm prune --prod
 
 ENV NODE_ENV=production
-CMD ["node", "dist/api/main.js"]
+CMD ["sh", "scripts/start-render-api.sh"]
