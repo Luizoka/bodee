@@ -1,8 +1,10 @@
-node_modules
-dist
-coverage
-output
+.git
 .env
 .env.*
 !.env.example
-.git
+!.env.render.example
+coverage
+dist
+node_modules
+output
+*.log

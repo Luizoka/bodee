@@ -1,65 +1,18 @@
 services:
   - type: web
-    name: fatura-sync-api
+    name: fatura-sync
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
-    dockerCommand: pnpm api
     healthCheckPath: /api/v1/health
     envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: CREDENTIALS_ENCRYPTION_KEY
-        sync: false
       - key: ADMIN_API_KEY
         sync: false
-      - key: SYNC_PROVIDER
-        value: offline
-      - key: INVOICE_STORAGE_PROVIDER
-        value: local
-      # Defina INVOICE_STORAGE_PROVIDER=supabase e estes valores somente na fase 3.
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_INVOICE_BUCKET
-        value: faturas
       - key: PLAYWRIGHT_HEADLESS
         value: 'true'
-      - key: RATE_LIMIT_TRUST_PROXY
-        value: 'true'
-
-  - type: worker
-    name: fatura-sync-worker
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: pnpm worker:sync
-    maxShutdownDelaySeconds: 300
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: CREDENTIALS_ENCRYPTION_KEY
-        sync: false
-      - key: SYNC_PROVIDER
-        value: offline
-      - key: INVOICE_STORAGE_PROVIDER
-        value: local
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_INVOICE_BUCKET
-        value: faturas
-      - key: PLAYWRIGHT_HEADLESS
-        value: 'true'
-
-  - type: cron
-    name: fatura-sync-monthly
-    runtime: docker
-    schedule: '0 10 1 * *'
-    dockerfilePath: ./Dockerfile
-    dockerCommand: pnpm scheduler:monthly
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: CREDENTIALS_ENCRYPTION_KEY
-        sync: false
+      - key: PLAYWRIGHT_BROWSER_CHANNEL
+        value: chromium
+      - key: PLAYWRIGHT_TIMEOUT_MS
+        value: '60000'
+      - key: EQUATORIAL_API_TIMEOUT_MS
+        value: '30000'

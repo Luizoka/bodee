@@ -38,6 +38,36 @@ Depois execute:
 pnpm poc:equatorial
 ```
 
+Por padrão, o POC processa uma conta e uma competência. Para consultar duas ou
+mais contas na mesma sessão, informe-as separadas por vírgula:
+
+```env
+EQUATORIAL_ACCOUNT=
+EQUATORIAL_ACCOUNTS=003003643114,000000000000
+```
+
+Há três formas mutuamente exclusivas de escolher as competências. Use somente
+uma delas:
+
+```env
+# Uma competência
+EQUATORIAL_COMPETENCE=2026/08
+
+# Ou uma lista específica
+EQUATORIAL_COMPETENCES=2026/08,2026/06,2025/12
+
+# Ou um intervalo inclusivo; também aceita ordem decrescente
+EQUATORIAL_COMPETENCE_START=2026/08
+EQUATORIAL_COMPETENCE_END=2025/11
+```
+
+Ao usar lista ou intervalo, deixe `EQUATORIAL_COMPETENCE` vazio ou remova essa
+linha do `.env`. Cada conta e competência é processada isoladamente. Fatura
+ainda não emitida fica como `unavailable`; erro de consulta, download, PDF,
+gravação local ou banco fica como `failed`. Nos dois casos, o POC continua nos
+itens seguintes. Ao final, `equatorial.batch.completed` informa os totais; a
+execução retorna código de erro somente se houver pelo menos um item `failed`.
+
 Para validar o fluxo localmente sem abrir o portal nem depender dos servidores
 da Equatorial, execute:
 
@@ -76,7 +106,58 @@ pnpm test
 pnpm format:check
 ```
 
-## API local
+## API sem banco (Swagger e Render)
+
+A API pode iniciar sem PostgreSQL para baixar faturas diretamente da
+Equatorial. Nesse modo, as credenciais chegam no corpo da requisição, são usadas
+somente durante o login e não são persistidas.
+
+Configure apenas uma chave administrativa com pelo menos 32 caracteres. Para
+desenvolvimento local, copie os valores de `.env.render.example` para o seu
+`.env`. No Render, cadastre-os em **Environment**; não envie um `.env` real ao
+repositório.
+
+```env
+ADMIN_API_KEY=gere-uma-chave-aleatoria-com-pelo-menos-32-caracteres
+PLAYWRIGHT_HEADLESS=true
+PLAYWRIGHT_BROWSER_CHANNEL=chromium
+PLAYWRIGHT_TIMEOUT_MS=60000
+EQUATORIAL_API_TIMEOUT_MS=30000
+```
+
+Não configure `DATABASE_URL` nem `CREDENTIALS_ENCRYPTION_KEY`. Inicie com:
+
+```bash
+pnpm api
+```
+
+Abra `http://localhost:3000/api/docs`, clique em **Authorize**, informe
+`ADMIN_API_KEY` e execute:
+
+```text
+POST /api/v1/equatorial/invoices/download
+```
+
+Exemplo do corpo:
+
+```json
+{
+  "document": "00000000000",
+  "birthDate": "01/01/1990",
+  "accounts": ["003003643114"],
+  "competences": ["2026/08", "2026/07"]
+}
+```
+
+A resposta é `faturas-equatorial.zip`, contendo os PDFs encontrados e um
+`resultado.json` com o estado de cada conta e competência. A requisição aceita
+até 20 contas, 24 competências e 120 combinações. Os arquivos existem apenas na
+resposta HTTP; nada é salvo no disco do serviço.
+
+O `render.yaml` da raiz já cria um Web Service Docker sem banco. Depois do
+deploy, o Swagger fica em `https://SEU-SERVICO.onrender.com/api/docs`.
+
+## API local com PostgreSQL
 
 Inicie o PostgreSQL localmente uma única vez:
 
@@ -104,7 +185,7 @@ A documentação interativa Swagger está disponível em:
 http://localhost:3000/api/docs
 ```
 
-Use o botão `Authorize`: `adminApiKey` serve para cadastro e operação; 
+Use o botão `Authorize`: `adminApiKey` serve para cadastro e operação;
 `clientApiKey` serve para sincronizações, faturas e downloads do cliente.
 
 Para saber quais rotas pertencem à administração, ao cliente final e aos

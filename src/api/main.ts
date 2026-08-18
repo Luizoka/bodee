@@ -11,12 +11,15 @@ async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   const encryptionKey = process.env.CREDENTIALS_ENCRYPTION_KEY;
   const adminApiKey = process.env.ADMIN_API_KEY;
-  if (!databaseUrl || !encryptionKey || !adminApiKey) {
+  if (!adminApiKey) {
+    throw new Error('ADMIN_API_KEY é obrigatória.');
+  }
+  if (databaseUrl && !encryptionKey) {
     throw new Error(
-      'DATABASE_URL, CREDENTIALS_ENCRYPTION_KEY e ADMIN_API_KEY são obrigatórias.',
+      'CREDENTIALS_ENCRYPTION_KEY é obrigatória quando DATABASE_URL estiver configurada.',
     );
   }
-  if (!/^[a-f0-9]{64}$/i.test(encryptionKey)) {
+  if (databaseUrl && encryptionKey && !/^[a-f0-9]{64}$/i.test(encryptionKey)) {
     throw new Error(
       'CREDENTIALS_ENCRYPTION_KEY deve conter 64 caracteres hexadecimais.',
     );
@@ -28,13 +31,13 @@ async function main(): Promise<void> {
   const app = await NestFactory.create(ApiModule);
   app.enableShutdownHooks();
   app.setGlobalPrefix('api/v1');
-  await app.get(ApiService).initialize();
+  if (databaseUrl) await app.get(ApiService).initialize();
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
       .setTitle('FaturaSync API')
       .setDescription(
-        'API para solicitar, acompanhar e baixar faturas. Use a chave correta no botão Authorize.',
+        'API para baixar faturas diretamente da Equatorial e, quando houver banco configurado, gerenciar clientes e sincronizações. Use a chave correta no botão Authorize.',
       )
       .setVersion('0.1.0')
       .addBearerAuth(

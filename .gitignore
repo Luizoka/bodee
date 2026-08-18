@@ -4,8 +4,8 @@ coverage/
 .env
 .env.*
 !.env.example
+!.env.render.example
 output/
 playwright-report/
 test-results/
 *.log
-

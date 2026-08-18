@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { Pool } from 'pg';
 
+import { PocModule } from '../poc.module';
 import { AdminApiKeyGuard, ClientApiKeyGuard } from './api-auth.guards';
 import { ApiController } from './api.controller';
 import { ApiService } from './api.service';
@@ -10,8 +11,10 @@ import {
 } from './invoice-storage.factory';
 import type { InvoiceStorage } from './invoice-storage';
 import { ApiRateLimitMiddleware } from './api-rate-limit.middleware';
+import { StatelessEquatorialService } from './stateless-equatorial.service';
 
 @Module({
+  imports: [PocModule],
   controllers: [ApiController],
   providers: [
     {
@@ -33,6 +36,7 @@ import { ApiRateLimitMiddleware } from './api-rate-limit.middleware';
     AdminApiKeyGuard,
     ClientApiKeyGuard,
     ApiRateLimitMiddleware,
+    StatelessEquatorialService,
   ],
 })
 export class ApiModule implements NestModule {

@@ -42,7 +42,10 @@ export class ApiRateLimitMiddleware implements NestMiddleware {
       return;
     }
 
-    const admin = path.includes('/admin/') || path.includes('/clients');
+    const admin =
+      path.includes('/admin/') ||
+      path.includes('/clients') ||
+      path.includes('/equatorial/invoices/download');
     const windowMs = positiveEnvironmentValue('RATE_LIMIT_WINDOW_MS', 60_000);
     const maxRequests = positiveEnvironmentValue(
       admin ? 'RATE_LIMIT_ADMIN_MAX' : 'RATE_LIMIT_CLIENT_MAX',

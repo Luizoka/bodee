@@ -1,9 +1,12 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Inject,
   NotFoundException,
   Param,
@@ -12,19 +15,23 @@ import {
   Put,
   Query,
   Req,
+  Res,
   StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { z } from 'zod';
 
+import { EquatorialError } from '../providers/equatorial/equatorial.errors';
 import {
   AdminApiKeyGuard,
   ClientApiKeyGuard,
@@ -32,16 +39,110 @@ import {
   type AuthenticatedRequest,
 } from './api-auth.guards';
 import { ApiService } from './api.service';
+import { StatelessEquatorialService } from './stateless-equatorial.service';
+
+interface DownloadResponse {
+  setHeader(name: string, value: string): void;
+}
+
+const statelessDownloadSchema = z
+  .object({
+    document: z.string().trim().min(11).max(18),
+    birthDate: z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/),
+    accounts: z.array(z.string().trim().regex(/^\d+$/).max(64)).min(1).max(20),
+    competences: z
+      .array(z.string().regex(/^\d{4}\/(0[1-9]|1[0-2])$/))
+      .min(1)
+      .max(24),
+  })
+  .superRefine((value, context) => {
+    const total =
+      new Set(value.accounts).size * new Set(value.competences).size;
+    if (total > 120) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['accounts', 'competences'],
+        message: 'A requisição pode consultar no máximo 120 faturas.',
+      });
+    }
+  });
 
 @Controller()
 @ApiTags('FaturaSync')
 export class ApiController {
-  constructor(@Inject(ApiService) private readonly service: ApiService) {}
+  constructor(
+    @Inject(ApiService) private readonly service: ApiService,
+    @Inject(StatelessEquatorialService)
+    private readonly statelessEquatorial: StatelessEquatorialService,
+  ) {}
 
   @Get('health')
-  @ApiOperation({ summary: 'Verifica se a API e o banco estão disponíveis' })
+  @ApiOperation({
+    summary: 'Verifica a API e, quando configurado, o banco de dados',
+  })
   health() {
+    if (!process.env.DATABASE_URL) {
+      return { status: 'ok', database: 'disabled' };
+    }
     return this.service.health();
+  }
+
+  @Post('equatorial/invoices/download')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AdminApiKeyGuard)
+  @ApiBearerAuth('adminApiKey')
+  @ApiOperation({
+    summary: 'Baixa uma ou mais faturas da Equatorial sem usar banco de dados',
+    description:
+      'As credenciais são usadas apenas nesta requisição. A resposta é um ZIP com os PDFs encontrados e o arquivo resultado.json.',
+  })
+  @ApiBody({
+    schema: {
+      example: {
+        document: '00000000000',
+        birthDate: '01/01/1990',
+        accounts: ['003003643114'],
+        competences: ['2026/08', '2026/07'],
+      },
+    },
+  })
+  @ApiProduces('application/zip')
+  @ApiOkResponse({
+    description: 'ZIP com as faturas e o resumo resultado.json.',
+    schema: { type: 'string', format: 'binary' },
+  })
+  async downloadEquatorialInvoices(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: DownloadResponse,
+  ): Promise<StreamableFile> {
+    const input = parseBody(statelessDownloadSchema, body);
+
+    try {
+      const result = await this.statelessEquatorial.downloadInvoices(input);
+      response.setHeader('Content-Type', 'application/zip');
+      response.setHeader(
+        'Content-Disposition',
+        'attachment; filename="faturas-equatorial.zip"',
+      );
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('X-Invoices-Downloaded', String(result.downloaded));
+      response.setHeader('X-Invoices-Unavailable', String(result.unavailable));
+      response.setHeader('X-Invoices-Failed', String(result.failed));
+      response.setHeader('Content-Length', String(result.buffer.length));
+      return new StreamableFile(result.buffer);
+    } catch (error) {
+      if (error instanceof EquatorialError) {
+        throw new BadGatewayException({
+          message: error.message,
+          errorCode: error.code,
+          retryable: error.retryable,
+        });
+      }
+
+      throw new BadGatewayException(
+        'Não foi possível concluir a consulta na Equatorial.',
+      );
+    }
   }
 
   @Post('clients')
