@@ -12,6 +12,7 @@ const testSession: EquatorialAuthSession = {
   userAgent: 'fatura-sync-test',
   portalOrigin: 'https://portal.example.test',
   availableAccounts: [],
+  linkedAccounts: [],
 };
 
 describe('EquatorialApiService', () => {

@@ -122,6 +122,7 @@ ADMIN_API_KEY=gere-uma-chave-aleatoria-com-pelo-menos-32-caracteres
 PLAYWRIGHT_HEADLESS=false
 PLAYWRIGHT_BROWSER_CHANNEL=chromium
 PLAYWRIGHT_TIMEOUT_MS=60000
+EQUATORIAL_LOGIN_MAX_ATTEMPTS=3
 EQUATORIAL_API_TIMEOUT_MS=30000
 ```
 
@@ -402,20 +403,21 @@ xvfb-run -a pnpm worker:sync
 
 Isso apenas fornece um display virtual; não contorna mecanismos antifraude.
 
-Quando o portal exibir somente OTP, a POC preenche o CPF/CNPJ e solicita o código.
-Conclua a confirmação no navegador que foi aberto. Se precisar de mais tempo,
-aumente `PLAYWRIGHT_TIMEOUT_MS` no `.env`, por exemplo para `180000`.
+O login reproduz o fluxo normal da página: o formulário inicial executa
+`otp-check`; quando o portal escolhe o fluxo legado, o próprio JavaScript carrega
+reCAPTCHA e Transmit Security, formata CPF/data e envia `autenticacao`. O sistema
+não extrai, fabrica nem reutiliza tokens de segurança. Se a conta for direcionada
+para confirmação manual por OTP, a requisição é encerrada com erro específico.
 
-Antes de escolher OTP, a POC espera até 10 segundos pelo formulário preferencial
-de CPF/CNPJ e data de nascimento. Após o login, as chamadas HTTP reutilizam o
-JWT, os cookies da sessão e o user-agent do navegador, sem registrar nenhum desses
-dados nos logs.
+Cada tentativa usa um contexto novo, sem compartilhar cookies entre clientes ou
+entre falhas. Respostas transitórias como `DENY` podem ser repetidas no máximo
+três vezes, com espera de 2 e 5 segundos. Ajuste o limite entre 1 e 3 com
+`EQUATORIAL_LOGIN_MAX_ATTEMPTS`; não há retry para bloqueio HTTP 403.
 
-Por padrão, a POC abre um contexto novo do Chromium em modo visível, porque esse
-foi o modo que comprovou o login neste projeto. Para investigar problemas de
-antifraude, é possível configurar o Chrome instalado e um perfil dedicado em
-`output/browser-profile` com `PLAYWRIGHT_BROWSER_CHANNEL=chrome` e
-`PLAYWRIGHT_PERSISTENT_CONTEXT=true`. Esse perfil não é o seu perfil pessoal.
+Após o login, o sistema confirma a sessão, carrega
+`ajax-uc-contas-contrato` e só então consulta as faturas. Os logs contêm apenas
+método, caminho, status, tipo de conteúdo e nomes dos campos; CPF, data, cookies,
+JWT e tokens nunca são registrados.
 
 Quando não encontrar o formulário de autenticação, a POC salva uma captura em
 `output/equatorial/debug/auth-form-unavailable.png` para diagnóstico local.
@@ -429,8 +431,9 @@ HTTP 403 do mecanismo de proteção do portal. Por isso, a configuração inicia
 `PLAYWRIGHT_HEADLESS=false`.
 
 A POC não altera a página para contornar esses estados: se a proteção bloquear a
-navegação, encerra com `PORTAL_BLOCKED`; se nenhum formulário legítimo estiver
-disponível, encerra com `AUTH_FORM_UNAVAILABLE`. O OTP é concluído manualmente.
+navegação, encerra com `PAGE_BLOCKED`; se os scripts de segurança não carregarem,
+encerra com `SCRIPT_LOAD_FAILED`; e se nenhum formulário legítimo estiver
+disponível, encerra com `AUTH_FORM_UNAVAILABLE`.
 
 Essa verificação é deliberada. Antes de adaptar a automação, deve-se confirmar no
 navegador qual fluxo de login a conta autorizada recebe atualmente.

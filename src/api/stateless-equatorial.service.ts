@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { strToU8, zipSync } from 'fflate';
 
 import { EquatorialApiService } from '../providers/equatorial/equatorial-api.service';
@@ -40,6 +40,7 @@ interface StatelessEquatorialOptions {
   apiUrl: string;
   headless: boolean;
   browserTimeoutMs: number;
+  loginMaxAttempts: number;
   apiTimeoutMs: number;
   browserChannel: 'chrome' | 'chromium';
 }
@@ -60,6 +61,10 @@ function readOptions(): StatelessEquatorialOptions {
     browserTimeoutMs: positiveInteger(
       process.env.PLAYWRIGHT_TIMEOUT_MS,
       60_000,
+    ),
+    loginMaxAttempts: positiveInteger(
+      process.env.EQUATORIAL_LOGIN_MAX_ATTEMPTS,
+      3,
     ),
     apiTimeoutMs: positiveInteger(
       process.env.EQUATORIAL_API_TIMEOUT_MS,
@@ -97,8 +102,11 @@ function safeFailure(
 @Injectable()
 export class StatelessEquatorialService {
   constructor(
+    @Inject(EquatorialAuthService)
     private readonly auth: EquatorialAuthService,
+    @Inject(EquatorialApiService)
     private readonly api: EquatorialApiService,
+    @Inject(EquatorialPdfService)
     private readonly pdfService: EquatorialPdfService,
   ) {}
 
@@ -122,6 +130,7 @@ export class StatelessEquatorialService {
           persistentContext: false,
           userDataDirectory: join('/tmp', 'fatura-sync-browser'),
           diagnosticDirectory: join('/tmp', 'fatura-sync-debug'),
+          maxAttempts: options.loginMaxAttempts,
         },
       );
 

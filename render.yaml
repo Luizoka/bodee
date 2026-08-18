@@ -15,5 +15,7 @@ services:
         value: chromium
       - key: PLAYWRIGHT_TIMEOUT_MS
         value: '60000'
+      - key: EQUATORIAL_LOGIN_MAX_ATTEMPTS
+        value: '3'
       - key: EQUATORIAL_API_TIMEOUT_MS
         value: '30000'

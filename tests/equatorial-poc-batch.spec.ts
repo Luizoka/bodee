@@ -20,6 +20,7 @@ function session(availableAccounts: string[]): ActiveEquatorialAuthSession {
     userAgent: 'test',
     portalOrigin: 'https://example.test',
     availableAccounts,
+    linkedAccounts: [],
     requestJsonFromBrowser: vi.fn(),
     close: vi.fn(),
   };

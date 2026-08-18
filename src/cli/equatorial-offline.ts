@@ -28,7 +28,8 @@ function createOfflineSession(pdfBase64: string): ActiveEquatorialAuthSession {
   const sampleInvoices = [
     {
       numeroFatura: 'OFFLINE-2026-08',
-      competencia: process.env.EQUATORIAL_COMPETENCE?.trim() || defaultCompetence,
+      competencia:
+        process.env.EQUATORIAL_COMPETENCE?.trim() || defaultCompetence,
       valor: 'R$ 123,45',
       dataVencimento: '10/09/2026',
     },
@@ -50,7 +51,10 @@ function createOfflineSession(pdfBase64: string): ActiveEquatorialAuthSession {
     availableAccounts: [
       process.env.EQUATORIAL_ACCOUNT?.trim() || defaultAccount,
     ],
-    requestJsonFromBrowser: async (url: string): Promise<BrowserHttpResponse> => {
+    linkedAccounts: [],
+    requestJsonFromBrowser: async (
+      url: string,
+    ): Promise<BrowserHttpResponse> => {
       if (url.includes('/api/v1/debitos/')) {
         return {
           status: 200,

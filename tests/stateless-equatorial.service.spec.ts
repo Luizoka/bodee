@@ -1,12 +1,28 @@
 import { unzipSync } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
+import { NestFactory } from '@nestjs/core';
 
+import { ApiModule } from '../src/api/api.module';
 import { StatelessEquatorialService } from '../src/api/stateless-equatorial.service';
 import type { EquatorialApiService } from '../src/providers/equatorial/equatorial-api.service';
 import type { EquatorialPdfService } from '../src/providers/equatorial/equatorial-pdf.service';
 import type { ActiveEquatorialAuthSession } from '../src/providers/equatorial/equatorial.types';
 
 describe('StatelessEquatorialService', () => {
+  it('recebe os provedores reais quando criado pelo Nest', async () => {
+    const app = await NestFactory.createApplicationContext(ApiModule, {
+      logger: false,
+    });
+    try {
+      const service = app.get(StatelessEquatorialService);
+      expect(Reflect.get(service, 'auth')).toBeDefined();
+      expect(Reflect.get(service, 'api')).toBeDefined();
+      expect(Reflect.get(service, 'pdfService')).toBeDefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('baixa várias competências em uma sessão e devolve um ZIP com resumo', async () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const session: ActiveEquatorialAuthSession = {
@@ -17,6 +33,7 @@ describe('StatelessEquatorialService', () => {
       userAgent: 'test',
       portalOrigin: 'https://portal.example.test',
       availableAccounts: ['000123'],
+      linkedAccounts: [],
       requestJsonFromBrowser: vi.fn(),
       close,
     };
@@ -84,6 +101,7 @@ describe('StatelessEquatorialService', () => {
       userAgent: 'test',
       portalOrigin: 'https://portal.example.test',
       availableAccounts: [],
+      linkedAccounts: [],
       requestJsonFromBrowser: vi.fn(),
       close,
     };

@@ -12,8 +12,12 @@ export interface EquatorialAuthOptions {
   persistentContext: boolean;
   userDataDirectory: string;
   diagnosticDirectory: string;
+  maxAttempts?: number;
+  retryDelaysMs?: number[];
+  userAgent?: string;
   onOtpRequired?: () => void;
   onStage?: (stage: EquatorialAuthStage) => void;
+  onNetworkEvent?: (event: EquatorialNetworkEvent) => void;
   onWaitingForForm?: (elapsedSeconds: number) => void;
   onWaitingForToken?: (elapsedSeconds: number) => void;
 }
@@ -22,11 +26,39 @@ export type EquatorialLoginMode = 'birth_date' | 'otp';
 
 export type EquatorialAuthStage =
   | 'portal_loaded'
+  | 'scripts_ready'
   | 'form_ready'
+  | 'otp_checked'
   | 'login_submitted'
+  | 'authentication_received'
   | 'token_captured'
+  | 'accounts_loaded'
   | 'api_context_ready'
-  | 'session_ready';
+  | 'session_ready'
+  | 'retry_scheduled';
+
+export type EquatorialNetworkEvent =
+  | {
+      type: 'request';
+      method: string;
+      path: string;
+      postFieldNames: string[];
+    }
+  | {
+      type: 'response';
+      status: number;
+      path: string;
+      contentType: string;
+    };
+
+export interface EquatorialAccount {
+  id: string;
+  installationNumber?: string | undefined;
+  maskedConsumerUnit?: string | undefined;
+  address?: string | undefined;
+  neighborhood?: string | undefined;
+  city?: string | undefined;
+}
 
 export interface EquatorialAuthSession {
   accessToken: string;
@@ -36,6 +68,7 @@ export interface EquatorialAuthSession {
   userAgent: string;
   portalOrigin: string;
   availableAccounts: string[];
+  linkedAccounts: EquatorialAccount[];
 }
 
 export interface BrowserHttpResponse {
@@ -46,6 +79,11 @@ export interface BrowserHttpResponse {
 export interface ActiveEquatorialAuthSession extends EquatorialAuthSession {
   requestJsonFromBrowser(url: string): Promise<BrowserHttpResponse>;
   close(): Promise<void>;
+}
+
+export interface EquatorialLoginResult {
+  session: ActiveEquatorialAuthSession;
+  accounts: EquatorialAccount[];
 }
 
 export interface EquatorialInvoice {
