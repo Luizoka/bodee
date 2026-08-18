@@ -1,15 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 
 import { Injectable } from '@nestjs/common';
+
+import type {
+  InvoiceStorage,
+  InvoiceStorageReference,
+} from './invoice-storage';
 
 function safePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
 @Injectable()
-export class LocalInvoiceStorageService {
+export class LocalInvoiceStorageService implements InvoiceStorage {
   private readonly rootDirectory = resolve(
     process.cwd(),
     process.env.INVOICE_STORAGE_DIR ?? 'output/invoices',
@@ -20,7 +32,7 @@ export class LocalInvoiceStorageService {
     account: string,
     competence: string,
     content: Buffer,
-  ): Promise<{ filePath: string; filename: string }> {
+  ): Promise<InvoiceStorageReference> {
     const safeAccount = safePathSegment(account);
     const safeCompetence = safePathSegment(competence.replace('/', '-'));
     const directory = join(this.rootDirectory, String(clientId), safeAccount);
@@ -31,7 +43,7 @@ export class LocalInvoiceStorageService {
     await mkdir(directory, { recursive: true });
     try {
       await access(filePath);
-      return { filePath, filename };
+      return { provider: 'local', filePath, filename };
     } catch {
       // Arquivo ainda não existe.
     }
@@ -43,16 +55,27 @@ export class LocalInvoiceStorageService {
       await rm(temporary, { force: true }).catch(() => undefined);
       throw error;
     }
-    return { filePath, filename };
+    return { provider: 'local', filePath, filename };
   }
 
-  async read(filePath: string): Promise<{ content: Buffer; filename: string }> {
+  async get(
+    reference: InvoiceStorageReference,
+  ): Promise<{ content: Buffer; filename: string }> {
+    const filePath = reference.filePath;
+    if (!filePath) throw new Error('Referência de arquivo local inválida.');
     const resolvedPath = resolve(filePath);
     const pathWithinRoot = relative(this.rootDirectory, resolvedPath);
     if (pathWithinRoot.startsWith('..') || pathWithinRoot === '') {
       throw new Error('Caminho de fatura inválido.');
     }
-    return { content: await readFile(resolvedPath), filename: basename(resolvedPath) };
+    return {
+      content: await readFile(resolvedPath),
+      filename: basename(resolvedPath),
+    };
+  }
+
+  async delete(reference: InvoiceStorageReference): Promise<void> {
+    if (reference.filePath) await rm(reference.filePath, { force: true });
   }
 
   async removeClientFiles(clientId: number): Promise<void> {

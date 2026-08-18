@@ -92,7 +92,7 @@ pnpm api
 
 As rotas locais estão sob o prefixo `/api/v1`:
 
-- `GET /health` verifica a conexão com o banco;
+- `GET /api/v1/health` verifica a conexão com o banco e não exige API key;
 - `POST /clients`, `POST /clients/:id/accounts`, `POST /clients/:id/api-keys`
   e `DELETE /clients/:id/api-keys/:keyId` exigem a chave administrativa;
 - `POST /sync`, `GET /sync/:id` e `GET /invoices` exigem uma API key ativa do
@@ -271,6 +271,55 @@ removidos ao final.
 
 `pnpm test:equatorial` é intencionalmente um teste real opcional e não deve ser
 executado automaticamente no CI.
+
+## Deploy no Render
+
+O arquivo `render.yaml` descreve três processos independentes usando a mesma
+imagem Docker e o mesmo PostgreSQL. Configure os segredos somente no painel do
+Render; eles não pertencem ao repositório, ao Dockerfile nem ao Swagger.
+
+```text
+Web Service       pnpm api
+Background Worker pnpm worker:sync
+Cron Job          pnpm scheduler:monthly
+```
+
+O Web Service usa automaticamente `PORT` fornecida pelo Render; para o
+desenvolvimento local, `API_PORT=3000` continua suportado. Configure o health
+check do Web Service como `/api/v1/health`.
+
+No primeiro deploy, use `SYNC_PROVIDER=offline`. Isso valida API, PostgreSQL,
+fila, worker e PDF de teste sem iniciar uma sessão no portal. Só altere para
+`SYNC_PROVIDER=equatorial` depois de validar o Chromium e a autenticação no
+Render. Um eventual bloqueio antifraude do portal é distinto de uma falha da
+infraestrutura Docker.
+
+Para produção, não use o filesystem efêmero do Render para PDFs. Depois de
+validar a fase offline, configure:
+
+```env
+INVOICE_STORAGE_PROVIDER=supabase
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_INVOICE_BUCKET=faturas
+```
+
+O worker envia cada PDF para um caminho como
+`clients/12/equatorial/123456789/2026/08/invoice.pdf`; o banco guarda somente a
+referência do storage e metadados, nunca o PDF em Base64. A chave `SERVICE_ROLE`
+é utilizada exclusivamente nos processos de servidor e não é retornada, exibida
+no Swagger ou registrada em logs.
+
+A imagem usa a versão oficial do Playwright correspondente à dependência do
+projeto, com Chromium e bibliotecas Linux. O primeiro teste recomendado é
+`PLAYWRIGHT_HEADLESS=true`. Se, no futuro, for necessário abrir Chromium normal
+sem monitor físico, a imagem também possui Xvfb e o worker pode ser iniciado com:
+
+```bash
+xvfb-run -a pnpm worker:sync
+```
+
+Isso apenas fornece um display virtual; não contorna mecanismos antifraude.
 
 Quando o portal exibir somente OTP, a POC preenche o CPF/CNPJ e solicita o código.
 Conclua a confirmação no navegador que foi aberto. Se precisar de mais tempo,

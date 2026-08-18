@@ -1,21 +1,65 @@
 services:
-  - type: cron
-    name: fatura-sync
+  - type: web
+    name: fatura-sync-api
     runtime: docker
-    schedule: "0 10 1 * *"
     dockerfilePath: ./Dockerfile
+    dockerCommand: pnpm api
+    healthCheckPath: /api/v1/health
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: EQUATORIAL_DOCUMENT
+      - key: CREDENTIALS_ENCRYPTION_KEY
         sync: false
-      - key: EQUATORIAL_BIRTH_DATE
+      - key: ADMIN_API_KEY
         sync: false
-      - key: EQUATORIAL_ACCOUNTS
+      - key: SYNC_PROVIDER
+        value: offline
+      - key: INVOICE_STORAGE_PROVIDER
+        value: local
+      # Defina INVOICE_STORAGE_PROVIDER=supabase e estes valores somente na fase 3.
+      - key: SUPABASE_URL
         sync: false
-      - key: EQUATORIAL_COMPETENCE
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: SUPABASE_INVOICE_BUCKET
+        value: faturas
       - key: PLAYWRIGHT_HEADLESS
-        value: "true"
-      - key: POC_OUTPUT_DIR
-        value: "/tmp/fatura-sync"
+        value: 'true'
+      - key: RATE_LIMIT_TRUST_PROXY
+        value: 'true'
+
+  - type: worker
+    name: fatura-sync-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: pnpm worker:sync
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false
+      - key: SYNC_PROVIDER
+        value: offline
+      - key: INVOICE_STORAGE_PROVIDER
+        value: local
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_INVOICE_BUCKET
+        value: faturas
+      - key: PLAYWRIGHT_HEADLESS
+        value: 'true'
+
+  - type: cron
+    name: fatura-sync-monthly
+    runtime: docker
+    schedule: '0 10 1 * *'
+    dockerfilePath: ./Dockerfile
+    dockerCommand: pnpm scheduler:monthly
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false

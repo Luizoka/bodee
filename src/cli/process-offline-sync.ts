@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { Pool } from 'pg';
 
 import { ApiService, type ClaimedSync } from '../api/api.service';
+import { createInvoiceStorage } from '../api/invoice-storage.factory';
 import { EquatorialInvoiceProvider } from '../providers/equatorial-invoice.provider';
 import type { InvoiceSyncProvider } from '../providers/invoice-sync.provider';
 import { OfflineInvoiceProvider } from '../providers/offline-invoice.provider';
@@ -43,7 +44,7 @@ async function processClaimedSync(
     const result = await service.processSync(claim.id, provider);
     if (!result) throw new Error('Sincronização não encontrada.');
     process.stdout.write(
-      `${JSON.stringify({ event: 'worker.offline.completed', ...result })}\n`,
+      `${JSON.stringify({ event: 'worker.completed', ...result })}\n`,
     );
   } catch {
     const status = await service.recordOfflineSyncFailure(
@@ -53,7 +54,7 @@ async function processClaimedSync(
     );
     process.stderr.write(
       `${JSON.stringify({
-        event: 'worker.offline.processing_failed',
+        event: 'worker.processing_failed',
         syncId: claim.id,
         attempts: claim.attempts,
         nextStatus: status,
@@ -71,25 +72,32 @@ async function processSpecificSync(
   provider: InvoiceSyncProvider,
 ): Promise<void> {
   const claim = await service.claimSyncById(syncId, staleAfterMs);
-  if (!claim) throw new Error('Sincronização não está disponível para processamento.');
+  if (!claim)
+    throw new Error('Sincronização não está disponível para processamento.');
   try {
     const result = await service.processSync(syncId, provider);
     if (!result) throw new Error('Sincronização não encontrada.');
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
-    await service.recordOfflineSyncFailure(syncId, maxAttempts, retryBaseDelayMs);
+    await service.recordOfflineSyncFailure(
+      syncId,
+      maxAttempts,
+      retryBaseDelayMs,
+    );
     throw error;
   }
 }
 
 async function run(): Promise<void> {
-  const argument = process.argv[2];
+  const argument = process.argv.slice(2).find((value) => value !== '--');
   const runOnce = argument === '--once';
   const syncId = argument && !runOnce ? argument : undefined;
   const databaseUrl = process.env.DATABASE_URL;
   const encryptionKey = process.env.CREDENTIALS_ENCRYPTION_KEY;
   if (!databaseUrl || !encryptionKey) {
-    throw new Error('DATABASE_URL e CREDENTIALS_ENCRYPTION_KEY são obrigatórias.');
+    throw new Error(
+      'DATABASE_URL e CREDENTIALS_ENCRYPTION_KEY são obrigatórias.',
+    );
   }
   if (!/^[a-f0-9]{64}$/i.test(encryptionKey)) {
     throw new Error(
@@ -97,8 +105,14 @@ async function run(): Promise<void> {
     );
   }
 
-  const pollIntervalMs = positiveEnvironmentValue('WORKER_POLL_INTERVAL_MS', 1_000);
-  const staleAfterMs = positiveEnvironmentValue('WORKER_STALE_AFTER_MS', 300_000);
+  const pollIntervalMs = positiveEnvironmentValue(
+    'WORKER_POLL_INTERVAL_MS',
+    1_000,
+  );
+  const staleAfterMs = positiveEnvironmentValue(
+    'WORKER_STALE_AFTER_MS',
+    300_000,
+  );
   const maxAttempts = positiveEnvironmentValue('WORKER_MAX_ATTEMPTS', 3);
   const retryBaseDelayMs = nonNegativeEnvironmentValue(
     'WORKER_RETRY_BASE_DELAY_MS',
@@ -113,7 +127,7 @@ async function run(): Promise<void> {
   process.once('SIGTERM', stop);
 
   try {
-    const service = new ApiService(pool, encryptionKey);
+    const service = new ApiService(pool, encryptionKey, createInvoiceStorage());
     await service.initialize();
     const provider = createProvider(service);
 
@@ -131,7 +145,7 @@ async function run(): Promise<void> {
 
     process.stdout.write(
       `${JSON.stringify({
-        event: 'worker.offline.started',
+        event: 'worker.started',
         pollIntervalMs,
         maxAttempts,
         retryBaseDelayMs,
@@ -143,7 +157,7 @@ async function run(): Promise<void> {
       if (claim) {
         process.stdout.write(
           `${JSON.stringify({
-            event: 'worker.offline.claimed',
+            event: 'worker.claimed',
             syncId: claim.id,
             attempts: claim.attempts,
           })}\n`,
@@ -171,6 +185,6 @@ async function run(): Promise<void> {
 
 void run().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : 'Falha inesperada.';
-  process.stderr.write(`worker.offline.failed: ${message}\n`);
+  process.stderr.write(`worker.failed: ${message}\n`);
   process.exitCode = 1;
 });

@@ -6,9 +6,13 @@ import {
   randomUUID,
 } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import { Pool } from 'pg';
 
+import type {
+  InvoiceStorage,
+  InvoiceStorageReference,
+} from './invoice-storage';
 import { LocalInvoiceStorageService } from './local-invoice-storage.service';
 import { OfflineInvoiceProvider } from '../providers/offline-invoice.provider';
 import {
@@ -83,11 +87,11 @@ function hashApiKey(value: string): string {
 }
 
 @Injectable()
-export class ApiService {
+export class ApiService implements OnApplicationShutdown {
   constructor(
     private readonly pool: Pool,
     private readonly key: string,
-    private readonly storage = new LocalInvoiceStorageService(),
+    private readonly storage: InvoiceStorage = new LocalInvoiceStorageService(),
   ) {}
 
   async initialize(): Promise<void> {
@@ -123,6 +127,12 @@ export class ApiService {
         UNIQUE (account, competence)
       );
       ALTER TABLE invoices ADD COLUMN IF NOT EXISTS client_id BIGINT REFERENCES clients(id);
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS storage_provider TEXT NOT NULL DEFAULT 'local';
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS storage_bucket TEXT;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS storage_path TEXT;
+      ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_account_competence_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS invoices_client_account_competence_key
+        ON invoices (client_id, account, competence);
       CREATE TABLE IF NOT EXISTS sync_runs (
         id UUID PRIMARY KEY,
         client_id BIGINT REFERENCES clients(id) ON DELETE CASCADE,
@@ -191,6 +201,10 @@ export class ApiService {
   async health(): Promise<{ status: 'ok' }> {
     await this.pool.query('SELECT 1');
     return { status: 'ok' };
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.pool.end();
   }
 
   async recordAuditLog(
@@ -272,12 +286,34 @@ export class ApiService {
         await connection.query('ROLLBACK');
         return false;
       }
+      const invoices = await connection.query<{
+        storage_provider: 'local' | 'supabase';
+        file_path: string;
+        storage_bucket: string | null;
+        storage_path: string | null;
+        account: string;
+        competence: string;
+      }>(
+        `SELECT storage_provider,file_path,storage_bucket,storage_path,account,competence
+         FROM invoices WHERE client_id = $1`,
+        [clientId],
+      );
       await connection.query('DELETE FROM invoices WHERE client_id = $1', [
         clientId,
       ]);
       await connection.query('DELETE FROM clients WHERE id = $1', [clientId]);
       await connection.query('COMMIT');
-      await this.storage.removeClientFiles(clientId);
+      await Promise.all(
+        invoices.rows.map((invoice) =>
+          this.storage.delete({
+            provider: invoice.storage_provider,
+            filePath: invoice.file_path,
+            bucket: invoice.storage_bucket ?? undefined,
+            storagePath: invoice.storage_path ?? undefined,
+            filename: `${invoice.account}_${invoice.competence.replace('/', '-')}.pdf`,
+          }),
+        ),
+      );
       return true;
     } catch (error) {
       await connection.query('ROLLBACK').catch(() => undefined);
@@ -420,7 +456,9 @@ export class ApiService {
         [clientId, requestedAccounts],
       );
       if (accounts.rowCount !== requestedAccounts.length) {
-        throw new Error('Todas as contas da sincronização devem pertencer ao cliente.');
+        throw new Error(
+          'Todas as contas da sincronização devem pertencer ao cliente.',
+        );
       }
 
       const id = randomUUID();
@@ -447,7 +485,9 @@ export class ApiService {
   }
 
   /** Enfileira apenas contas que ainda não têm fatura ou trabalho ativo. */
-  async scheduleMonthlySyncs(competence: string): Promise<MonthlyScheduleResult> {
+  async scheduleMonthlySyncs(
+    competence: string,
+  ): Promise<MonthlyScheduleResult> {
     if (!/^\d{4}\/(0[1-9]|1[0-2])$/.test(competence)) {
       throw new Error('Competência deve estar no formato AAAA/MM.');
     }
@@ -512,7 +552,12 @@ export class ApiService {
       }
 
       await connection.query('COMMIT');
-      return { competence, syncsCreated: syncIds.length, itemsCreated, syncIds };
+      return {
+        competence,
+        syncsCreated: syncIds.length,
+        itemsCreated,
+        syncIds,
+      };
     } catch (error) {
       await connection.query('ROLLBACK').catch(() => undefined);
       throw error;
@@ -523,9 +568,7 @@ export class ApiService {
 
   async listAdminSyncRuns(status?: SyncRunStatus, limit = 50) {
     const values: (string | number)[] = [];
-    const where = status
-      ? (values.push(status), 'WHERE run.status = $1')
-      : '';
+    const where = status ? (values.push(status), 'WHERE run.status = $1') : '';
     values.push(limit);
     const runs = await this.pool.query(
       `SELECT run.id,run.client_id,client.name AS client_name,run.status,
@@ -576,7 +619,9 @@ export class ApiService {
     }
   }
 
-  async claimNextQueuedSync(staleAfterMs: number): Promise<ClaimedSync | undefined> {
+  async claimNextQueuedSync(
+    staleAfterMs: number,
+  ): Promise<ClaimedSync | undefined> {
     const connection = await this.pool.connect();
     try {
       await connection.query('BEGIN');
@@ -683,7 +728,8 @@ export class ApiService {
       const status = failedRun.attempts >= maxAttempts ? 'FAILED' : 'QUEUED';
       const error = 'Processamento offline não foi concluído.';
       const retryDelayMs = Math.min(
-        Math.max(0, retryBaseDelayMs) * 2 ** Math.max(0, failedRun.attempts - 1),
+        Math.max(0, retryBaseDelayMs) *
+          2 ** Math.max(0, failedRun.attempts - 1),
         3_600_000,
       );
       await connection.query(
@@ -765,7 +811,9 @@ export class ApiService {
         };
         const providerFile = providerFiles.get(invoiceInputKey(input));
         if (!providerFile) {
-          throw new Error('Provider não retornou arquivo para um item da sincronização.');
+          throw new Error(
+            'Provider não retornou arquivo para um item da sincronização.',
+          );
         }
         const content = providerFile.content;
         const saved = await this.storage.save(
@@ -778,11 +826,13 @@ export class ApiService {
 
         await connection.query(
           `INSERT INTO invoices
-             (client_id, account, competence, file_path, sha256, status)
-           VALUES ($1,$2,$3,$4,$5,'DOWNLOADED')
-           ON CONFLICT (account, competence) DO UPDATE SET
-             client_id = EXCLUDED.client_id,
+             (client_id, account, competence, file_path, storage_provider, storage_bucket, storage_path, sha256, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'DOWNLOADED')
+           ON CONFLICT (client_id, account, competence) DO UPDATE SET
              file_path = EXCLUDED.file_path,
+             storage_provider = EXCLUDED.storage_provider,
+             storage_bucket = EXCLUDED.storage_bucket,
+             storage_path = EXCLUDED.storage_path,
              sha256 = EXCLUDED.sha256,
              status = EXCLUDED.status,
              last_error = NULL,
@@ -791,7 +841,12 @@ export class ApiService {
             item.client_id,
             item.account,
             item.competence,
-            saved.filePath,
+            saved.provider === 'local'
+              ? (saved.filePath ?? '')
+              : (saved.storagePath ?? ''),
+            saved.provider,
+            saved.bucket ?? null,
+            saved.storagePath ?? null,
             sha256,
           ],
         );
@@ -862,12 +917,27 @@ export class ApiService {
   }
 
   async getInvoiceDownload(invoiceId: number, clientId: number) {
-    const invoice = await this.pool.query<{ file_path: string }>(
-      `SELECT file_path FROM invoices WHERE id = $1 AND client_id = $2`,
+    const invoice = await this.pool.query<{
+      storage_provider: 'local' | 'supabase';
+      file_path: string;
+      storage_bucket: string | null;
+      storage_path: string | null;
+      account: string;
+      competence: string;
+    }>(
+      `SELECT storage_provider,file_path,storage_bucket,storage_path,account,competence
+       FROM invoices WHERE id = $1 AND client_id = $2`,
       [invoiceId, clientId],
     );
-    const filePath = invoice.rows[0]?.file_path;
-    if (!filePath) return undefined;
-    return this.storage.read(filePath);
+    const stored = invoice.rows[0];
+    if (!stored) return undefined;
+    const reference: InvoiceStorageReference = {
+      provider: stored.storage_provider,
+      filePath: stored.file_path,
+      bucket: stored.storage_bucket ?? undefined,
+      storagePath: stored.storage_path ?? undefined,
+      filename: `${stored.account}_${stored.competence.replace('/', '-')}.pdf`,
+    };
+    return this.storage.get(reference);
   }
 }

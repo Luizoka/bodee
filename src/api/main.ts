@@ -26,6 +26,7 @@ async function main(): Promise<void> {
   }
 
   const app = await NestFactory.create(ApiModule);
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api/v1');
   await app.get(ApiService).initialize();
   const document = SwaggerModule.createDocument(
@@ -47,7 +48,8 @@ async function main(): Promise<void> {
       .build(),
   );
   SwaggerModule.setup('api/docs', app, document, { useGlobalPrefix: false });
-  await app.listen(Number(process.env.API_PORT ?? 3000), '0.0.0.0');
+  const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3000);
+  await app.listen(port, '0.0.0.0');
 }
 
 void main();
