@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "BODE — FaturaSync (POC)",
+  "description": "POC para consultar faturas da Equatorial usando uma sessão autenticada pelo usuário.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "BODE — FaturaSync",
+    "default_popup": "src/popup/popup.html"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://pa.equatorialenergia.com.br/siteantigo/*"],
+      "js": ["src/content/equatorial.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["scripting", "tabs", "downloads"],
+  "host_permissions": [
+    "https://pa.equatorialenergia.com.br/*",
+    "https://api-pa-cliente.equatorialenergia.com.br/*"
+  ]
+}

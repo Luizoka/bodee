@@ -1,0 +1,20 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; }
+body { width: 320px; margin: 0; color: #1e293b; background: #f8fafc; }
+main { padding: 16px; }
+h1 { margin: 0 0 4px; font-size: 22px; }
+label { display: block; margin: 16px 0 6px; font-weight: 700; font-size: 13px; }
+.status, .message { min-height: 20px; margin: 0; font-size: 13px; }
+.status.connected { color: #15803d; }
+.status.disconnected, .message.error { color: #b91c1c; }
+.message.success { color: #15803d; }
+select, button { box-sizing: border-box; width: 100%; min-height: 36px; border-radius: 6px; font: inherit; }
+select { border: 1px solid #94a3b8; padding: 0 8px; background: white; }
+button { margin-top: 10px; border: 0; color: white; background: #2563eb; font-size: 12px; font-weight: 700; cursor: pointer; }
+button:disabled { cursor: default; background: #94a3b8; }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; }
+.section-heading label { margin-bottom: 6px; }
+button.text-button { width: auto; min-height: auto; margin: 0; color: #2563eb; background: transparent; font-size: 12px; }
+.invoices { max-height: 150px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 6px; background: white; }
+.invoice { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+.invoice:last-child { border-bottom: 0; }
+.invoice input { accent-color: #2563eb; }

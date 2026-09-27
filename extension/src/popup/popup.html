@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BODE</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>🐐 BODE</h1>
+      <p id="session-status" class="status">Verificando sessão…</p>
+      <label for="account">Unidade</label>
+      <select id="account" disabled><option>Carregue as unidades</option></select>
+      <button id="load-accounts" type="button">ATUALIZAR UNIDADES</button>
+      <section id="invoices-section" hidden>
+        <div class="section-heading">
+          <label>Competências</label>
+          <button id="select-all" type="button" class="text-button">Todas</button>
+        </div>
+        <div id="invoices" class="invoices"></div>
+        <button id="download" type="button" disabled>BAIXAR FATURAS</button>
+      </section>
+      <p id="message" class="message" role="status"></p>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
