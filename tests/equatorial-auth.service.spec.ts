@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findAccessToken,
   findContractAccounts,
+  findHolderName,
   getPostFieldNames,
   isLikelyJwt,
   isLoginDeniedPayload,
@@ -29,6 +30,15 @@ function captureEquatorialError(action: () => void): EquatorialError {
 }
 
 describe('captura de token', () => {
+  it('monta o nome do titular a partir dos dados complementares do login', () => {
+    expect(
+      findHolderName({
+        dados_complementares: { nome: 'C***DA', sobrenome: 'C***O' },
+      }),
+    ).toBe('C***DA C***O');
+    expect(findHolderName({ dados_complementares: {} })).toBeUndefined();
+  });
+
   it('encontra access_token aninhado na resposta de login', () => {
     expect(findAccessToken({ auth: { access_token: jwt } })).toBe(jwt);
   });

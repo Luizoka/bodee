@@ -3,10 +3,12 @@ import {
   API_ORIGIN,
   PORTAL_ORIGIN,
   isPdfBase64,
+  installAuthenticationHolderCapture,
   listAccountsFromPortal,
   parseAccounts,
   parseInvoices,
   probePortalSession,
+  readCapturedHolderName,
   readAccessTokenForRequest,
   requestFromApiContext,
 } from '../equatorial/client.js';
@@ -67,6 +69,9 @@ async function activePortalTab(required = true) {
 
 async function openPortal() {
   const tab = await chrome.tabs.create({ url: `${PORTAL_ORIGIN}/siteantigo/`, active: true });
+  if (tab.id) {
+    await executeInPage(tab.id, installAuthenticationHolderCapture).catch(() => undefined);
+  }
   return { tabId: tab.id };
 }
 
@@ -81,6 +86,7 @@ async function executeInPage(tabId, func, args = []) {
 }
 
 async function sessionStatus(tabId) {
+  await executeInPage(tabId, installAuthenticationHolderCapture).catch(() => undefined);
   const result = await executeInPage(tabId, probePortalSession);
   return { authenticated: result?.authenticated === true };
 }
@@ -88,7 +94,11 @@ async function sessionStatus(tabId) {
 async function accounts(tabId) {
   const result = await executeInPage(tabId, listAccountsFromPortal);
   assertEquatorialSuccess(result?.status, 'Não foi possível consultar as unidades consumidoras.');
-  const accounts = parseAccounts(result.body);
+  const holderName = await executeInPage(tabId, readCapturedHolderName);
+  const accounts = parseAccounts(result.body).map((account) => ({
+    ...account,
+    ...(holderName && !account.holderName ? { holderName } : {}),
+  }));
   if (accounts.length === 0) {
     throw new Error('A sessão está ativa, mas não retornou nenhuma unidade consumidora.');
   }

@@ -1,6 +1,8 @@
 /* global window, fetch, URL, atob */
 export const PORTAL_ORIGIN = 'https://pa.equatorialenergia.com.br';
 export const API_ORIGIN = 'https://api-pa-cliente.equatorialenergia.com.br';
+const holderNameStorageKey = 'bode.equatorial.holder-name';
+const authenticationCaptureFlag = '__bodeAuthenticationCaptureInstalled';
 
 /**
  * Esta função é injetada no mundo principal da página. Não retorne o token:
@@ -19,6 +21,42 @@ export async function probePortalSession() {
   };
 
   return { authenticated: Boolean(readToken()) };
+}
+
+/**
+ * Instala, antes do login, uma escuta restrita à resposta de autenticação do
+ * portal. Só o nome montado é guardado na sessionStorage da própria aba; token
+ * e credenciais jamais são lidos ou enviados à extensão.
+ */
+export function installAuthenticationHolderCapture() {
+  if (window[authenticationCaptureFlag]) return;
+  window[authenticationCaptureFlag] = true;
+
+  const originalOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function open(method, url, ...rest) {
+    const requestUrl = new URL(String(url), window.location.href);
+    const isAuthenticationRequest =
+      String(method).toUpperCase() === 'POST' &&
+      requestUrl.pathname.endsWith('/siteantigo/ajax-requests/autenticacao');
+
+    if (isAuthenticationRequest) {
+      this.addEventListener('loadend', () => {
+        if (this.status < 200 || this.status >= 300) return;
+        try {
+          const holderName = parseHolderName(JSON.parse(this.responseText));
+          if (holderName) window.sessionStorage.setItem(holderNameStorageKey, holderName);
+        } catch {
+          // Uma resposta inesperada não deve afetar a autenticação do portal.
+        }
+      });
+    }
+
+    return originalOpen.call(this, method, url, ...rest);
+  };
+}
+
+export function readCapturedHolderName() {
+  return optionalString(window.sessionStorage.getItem(holderNameStorageKey))?.trim() || undefined;
 }
 
 /**
@@ -99,6 +137,17 @@ export function parseAccounts(value) {
     });
   }
   return [...byId.values()];
+}
+
+export function parseHolderName(value) {
+  const complementaryData = value?.dados_complementares;
+  if (!complementaryData || typeof complementaryData !== 'object') return undefined;
+
+  const parts = [complementaryData.nome, complementaryData.sobrenome]
+    .map(optionalString)
+    .map((part) => part?.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : undefined;
 }
 
 export function parseInvoices(value) {

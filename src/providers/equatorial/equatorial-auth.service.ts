@@ -198,6 +198,30 @@ export function parseEquatorialAccounts(value: unknown): EquatorialAccount[] {
   );
 }
 
+/**
+ * O endpoint de autenticação separa o nome cadastrado em duas partes. Esse é
+ * o único ponto confiável do fluxo em que o titular é retornado.
+ */
+export function findHolderName(authenticationPayload: unknown): string | undefined {
+  if (!authenticationPayload || typeof authenticationPayload !== 'object') {
+    return undefined;
+  }
+
+  const complementaryData = (authenticationPayload as Record<string, unknown>)
+    .dados_complementares;
+  if (!complementaryData || typeof complementaryData !== 'object') return undefined;
+
+  const { nome, sobrenome } = complementaryData as Record<string, unknown>;
+  const parts = [nome, sobrenome]
+    .filter((part): part is string | number =>
+      typeof part === 'string' || typeof part === 'number',
+    )
+    .map((part) => String(part).trim())
+    .filter(Boolean);
+
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
+
 export function requireEquatorialAccounts(value: unknown): EquatorialAccount[] {
   const accounts = parseEquatorialAccounts(value);
   if (accounts.length === 0) {
@@ -859,6 +883,8 @@ export class EquatorialAuthService {
       );
       options.onStage?.('authentication_received');
 
+      const holderName = findHolderName(authenticationPayload);
+
       let token = findAccessToken(authenticationPayload);
       if (!token) {
         token = await waitForStoredToken(
@@ -949,7 +975,10 @@ export class EquatorialAuthService {
         accountsPayload = fallback.body;
       }
 
-      const accounts = requireEquatorialAccounts(accountsPayload);
+      const accounts = requireEquatorialAccounts(accountsPayload).map((account) => ({
+        ...account,
+        ...(holderName ? { holderName } : {}),
+      }));
       options.onStage?.('accounts_loaded');
 
       const apiPage = await prepareApiCookieContext(

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseAccounts, parseInvoices } from '../extension/src/equatorial/client.js';
+import { parseAccounts, parseHolderName, parseInvoices } from '../extension/src/equatorial/client.js';
 import { downloadFilename } from '../extension/src/shared/download-path.js';
 import { assertEquatorialSuccess } from '../extension/src/shared/equatorial-errors.js';
 
@@ -14,6 +14,7 @@ type ExtensionManifest = {
 };
 
 const parseAccountList = parseAccounts as (value: unknown) => unknown;
+const parseAuthenticationHolder = parseHolderName as (value: unknown) => string | undefined;
 const parseInvoiceList = parseInvoices as (value: unknown) => unknown;
 const createDownloadFilename = downloadFilename as (
   holder: string | undefined,
@@ -25,6 +26,12 @@ const validateStatus = assertEquatorialSuccess as (status: number, fallback: str
 function parseManifest(value: string): ExtensionManifest { return JSON.parse(value) as ExtensionManifest; }
 
 describe('cliente da extensão BODE', () => {
+  it('monta o titular a partir da resposta de autenticação', () => {
+    expect(parseAuthenticationHolder({
+      dados_complementares: { nome: 'C***DA', sobrenome: 'C***O' },
+    })).toBe('C***DA C***O');
+  });
+
   it('normaliza unidades e preserva titular, UC e conta-contrato', () => {
     expect(parseAccountList([
       {

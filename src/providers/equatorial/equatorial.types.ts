@@ -53,6 +53,7 @@ export type EquatorialNetworkEvent =
 
 export interface EquatorialAccount {
   id: string;
+  holderName?: string | undefined;
   installationNumber?: string | undefined;
   maskedConsumerUnit?: string | undefined;
   address?: string | undefined;

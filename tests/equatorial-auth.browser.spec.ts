@@ -167,7 +167,12 @@ beforeAll(async () => {
         );
         return;
       }
-      response.end(JSON.stringify({ auth: { access_token: jwt } }));
+      response.end(
+        JSON.stringify({
+          auth: { access_token: jwt },
+          dados_complementares: { nome: 'Ana', sobrenome: 'da Silva' },
+        }),
+      );
       return;
     }
     if (path === '/siteantigo/sua-conta/') {
@@ -225,6 +230,10 @@ describe('EquatorialAuthService no navegador', () => {
     expect(result.accounts.map((account) => account.id)).toEqual([
       '000123',
       '000789',
+    ]);
+    expect(result.accounts.map((account) => account.holderName)).toEqual([
+      'Ana da Silva',
+      'Ana da Silva',
     ]);
     expect(result.session.availableAccounts).toEqual(['000123', '000789']);
     expect(JSON.stringify(networkEvents)).not.toContain('00000000000');
