@@ -35,7 +35,7 @@ async function handleMessage(message) {
     case 'bode.invoices':
       return invoices(tab.id, message.account);
     case 'bode.download':
-      return download(tab.id, message.account, message.invoiceNumber, message.competence);
+      return download(tab.id, message.account, message.holderName, message.invoiceNumber, message.competence);
     default:
       throw new Error('Operação desconhecida.');
   }
@@ -85,7 +85,7 @@ async function invoices(tabId, account) {
   return parseInvoices(result.body);
 }
 
-async function download(tabId, account, invoiceNumber, competence) {
+async function download(tabId, account, holderName, invoiceNumber, competence) {
   const url = new URL(`/api/v1/faturas/segunda-via/${encodeURIComponent(requireText(invoiceNumber))}`, API_ORIGIN);
   url.searchParams.set('contaContrato', requireText(account));
   const result = await requestWithCurrentSession(tabId, url.toString());
@@ -93,7 +93,9 @@ async function download(tabId, account, invoiceNumber, competence) {
   const base64 = result.body?.data?.base64;
   if (!isPdfBase64(base64)) throw new Error('A Equatorial não retornou um PDF válido.');
 
-  const filename = `BODE/${safeFilename(account)}/${safeFilename(competence).replace('/', '-')}.pdf`;
+  const holderDirectory = safePathSegment(holderName, 'Titular não informado');
+  const accountDirectory = safePathSegment(account, 'Conta não informada');
+  const filename = `BODE/${holderDirectory}/${accountDirectory}/${safeFilename(competence).replace('/', '-')}.pdf`;
   await chrome.downloads.download({
     url: `data:application/pdf;base64,${base64}`,
     filename,
@@ -115,7 +117,6 @@ async function requestWithCurrentSession(portalTabId, requestUrl) {
     await waitForTabLoad(apiTabId);
     return await executeInPage(apiTabId, requestFromApiContext, [accessToken, requestUrl]);
   } finally {
-    accessToken = undefined;
     if (apiTabId) await chrome.tabs.remove(apiTabId).catch(() => undefined);
   }
 }
@@ -148,7 +149,12 @@ function requireText(value) {
 }
 
 function safeFilename(value) {
-  return String(value).replace(/[^a-zA-Z0-9._/-]/g, '_');
+  return String(value).replace(/[<>:"\\|?*]/g, '_');
+}
+
+function safePathSegment(value, fallback) {
+  const segment = safeFilename(value || '').replaceAll('/', '_').trim();
+  return segment || fallback;
 }
 
 function safeMessage(error) {

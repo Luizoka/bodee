@@ -9,6 +9,7 @@ const selectAllInvoices = document.querySelector('#select-all-invoices');
 const download = document.querySelector('#download');
 const message = document.querySelector('#message');
 let invoicesByAccount = new Map();
+let accountsById = new Map();
 
 loadAccounts.addEventListener('click', () => void refreshAccounts());
 accounts.addEventListener('change', () => void refreshInvoices());
@@ -40,12 +41,14 @@ async function refreshAccounts() {
   setBusy(loadAccounts, true, 'CARREGANDO…'); clearMessage();
   try {
     const availableAccounts = await request('bode.accounts');
-    accounts.replaceChildren(); invoices.replaceChildren(); invoicesByAccount = new Map();
+    accounts.replaceChildren(); invoices.replaceChildren(); invoicesByAccount = new Map(); accountsById = new Map();
     for (const item of availableAccounts) {
       const place = [item.address, item.city].filter(Boolean).join(' — ');
+      const description = [item.holderName, item.id, place].filter(Boolean).join(' — ');
       const label = document.createElement('label'); label.className = 'choice';
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = item.id;
-      label.append(checkbox, document.createTextNode(place ? `${item.id} — ${place}` : item.id)); accounts.append(label);
+      label.append(checkbox, document.createTextNode(description)); accounts.append(label);
+      accountsById.set(item.id, item);
     }
     invoiceSection.hidden = false; updateButtons();
   } catch (error) { showMessage(error.message, 'error'); }
@@ -87,7 +90,12 @@ async function downloadSelected() {
   download.disabled = true; clearMessage(); let complete = 0;
   for (const { account, invoice } of items) {
     try {
-      await request('bode.download', { account, invoiceNumber: invoice.invoiceNumber, competence: invoice.competence });
+      await request('bode.download', {
+        account,
+        holderName: accountsById.get(account)?.holderName,
+        invoiceNumber: invoice.invoiceNumber,
+        competence: invoice.competence,
+      });
       complete += 1;
     } catch (error) {
       showMessage(`${complete}/${items.length} faturas baixadas. ${error.message}`, 'error'); updateButtons(); return;

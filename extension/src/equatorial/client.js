@@ -87,6 +87,9 @@ export function parseAccounts(value) {
     const text = String(id);
     byId.set(text, {
       id: text,
+      holderName: optionalString(
+        item.nomeTitular ?? item.nomeDoTitular ?? item.nomeCliente ?? item.titular ?? item.nome ?? item.razaoSocial,
+      ),
       installationNumber: optionalString(item.numeroInstalacao),
       address: optionalString(item.endereco),
       city: optionalString(item.cidade),
