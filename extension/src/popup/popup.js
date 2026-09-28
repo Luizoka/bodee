@@ -11,7 +11,9 @@ const message = document.querySelector('#message');
 loadAccounts.addEventListener('click', () => void refreshAccounts());
 account.addEventListener('change', () => void refreshInvoices());
 selectAll.addEventListener('click', () => {
-  for (const checkbox of invoices.querySelectorAll('input')) checkbox.checked = true;
+  const checkboxes = invoices.querySelectorAll('input[type="checkbox"]');
+  const shouldSelectAll = [...checkboxes].some((checkbox) => !checkbox.checked);
+  for (const checkbox of checkboxes) checkbox.checked = shouldSelectAll;
   updateDownloadButton();
 });
 invoices.addEventListener('change', updateDownloadButton);
@@ -63,7 +65,11 @@ async function downloadSelected() {
   }
   showMessage(`${complete}/${selected.length} faturas baixadas.`, 'success'); updateDownloadButton();
 }
-function updateDownloadButton() { download.disabled = !invoices.querySelector('input:checked'); }
+function updateDownloadButton() {
+  const checkboxes = invoices.querySelectorAll('input[type="checkbox"]');
+  download.disabled = !invoices.querySelector('input:checked');
+  selectAll.textContent = checkboxes.length && [...checkboxes].every((checkbox) => checkbox.checked) ? 'Nenhuma' : 'Todas';
+}
 async function request(type, payload = {}) { const response = await chrome.runtime.sendMessage({ type, ...payload }); if (!response?.ok) throw new Error(response?.error || 'Falha inesperada.'); return response.value; }
 function setBusy(button, busy, label) { button.disabled = busy; button.textContent = label; }
 function showMessage(text, type) { message.textContent = text; message.className = `message ${type}`; }
