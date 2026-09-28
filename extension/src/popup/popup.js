@@ -29,7 +29,9 @@ async function refreshStatus() {
   try {
     const result = await request('bode.status');
     if (result.authenticated) {
-      status.textContent = '● Sessão conectada'; status.className = 'status connected'; loadAccounts.disabled = false; return;
+      status.textContent = '● Sessão conectada'; status.className = 'status connected'; loadAccounts.disabled = false;
+      void refreshAccounts();
+      return;
     }
     status.textContent = '● Faça login no portal da Equatorial'; status.className = 'status disconnected'; loadAccounts.disabled = true;
   } catch (error) {
@@ -44,7 +46,10 @@ async function refreshAccounts() {
     accounts.replaceChildren(); invoices.replaceChildren(); invoicesByAccount = new Map(); accountsById = new Map();
     for (const item of availableAccounts) {
       const place = [item.address, item.city].filter(Boolean).join(' — ');
-      const description = [item.holderName, item.id, place].filter(Boolean).join(' — ');
+      const accountDescription = item.consumerUnitNumber
+        ? `UC ${item.consumerUnitNumber} — Conta ${item.id}`
+        : `Conta ${item.id}`;
+      const description = [item.holderName, accountDescription, place].filter(Boolean).join(' — ');
       const label = document.createElement('label'); label.className = 'choice';
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = item.id;
       label.append(checkbox, document.createTextNode(description)); accounts.append(label);
@@ -87,22 +92,18 @@ async function downloadSelected() {
   const unavailable = selectedAccounts.length * selectedCompetences.length - items.length;
   if (!items.length) return;
 
-  download.disabled = true; clearMessage(); let complete = 0;
-  for (const { account, invoice } of items) {
-    try {
-      await request('bode.download', {
-        account,
-        holderName: accountsById.get(account)?.holderName,
-        invoiceNumber: invoice.invoiceNumber,
-        competence: invoice.competence,
-      });
-      complete += 1;
-    } catch (error) {
-      showMessage(`${complete}/${items.length} faturas baixadas. ${error.message}`, 'error'); updateButtons(); return;
-    }
-  }
+  download.disabled = true; clearMessage();
+  const downloads = items.map(({ account, invoice }) => ({
+    account,
+    holderName: accountsById.get(account)?.holderName,
+    consumerUnitNumber: accountsById.get(account)?.consumerUnitNumber,
+    invoiceNumber: invoice.invoiceNumber,
+    competence: invoice.competence,
+  }));
+  const result = await request('bode.download-batch', { downloads });
   const unavailableMessage = unavailable ? ` ${unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
-  showMessage(`${complete}/${items.length} faturas baixadas.${unavailableMessage}`, 'success'); updateButtons();
+  const failureMessage = result.failed ? ` ${result.failed} falharam.` : '';
+  showMessage(`${result.complete}/${items.length} faturas baixadas.${unavailableMessage}${failureMessage}`, result.failed ? 'error' : 'success'); updateButtons();
 }
 
 function checkedValues(container) { return [...container.querySelectorAll('input:checked')].map((input) => input.value); }

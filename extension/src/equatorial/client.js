@@ -90,6 +90,9 @@ export function parseAccounts(value) {
       holderName: optionalString(
         item.nomeTitular ?? item.nomeDoTitular ?? item.nomeCliente ?? item.titular ?? item.nome ?? item.razaoSocial,
       ),
+      consumerUnitNumber: optionalString(
+        item.numeroInstalacao ?? item.unidadeConsumidora ?? item.codigoUnidadeConsumidora ?? item.uc,
+      ),
       installationNumber: optionalString(item.numeroInstalacao),
       address: optionalString(item.endereco),
       city: optionalString(item.cidade),

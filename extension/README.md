@@ -16,7 +16,8 @@ Esta extensão Manifest V3 é uma prova de conceito isolada. Ela não altera nem
 - A extensão não coleta senha, não automatiza login e não tenta contornar CAPTCHA, Imperva ou Transmit Security.
 - O token é lido somente durante uma solicitação. Não é gravado em storage, exibido, registrado ou enviado a serviços externos.
 - Para cada chamada à API, uma aba técnica em segundo plano é aberta na origem da API e fechada ao terminar. Ela preserva o contexto real do navegador para a validação da POC.
-- O download cria PDFs individuais em `Downloads/BODE/<titular>/<conta>/`; ZIP será avaliado depois da validação no Windows 11. Se o portal não informar o titular, a pasta usada é `Titular não informado`.
+- O download cria PDFs individuais em `Downloads/BODE/<titular>/UC <unidade consumidora> - Conta <conta contrato>/`; ZIP será avaliado depois da validação no Windows 11. Se o portal não informar a UC ou o titular, o caminho usa a conta-contrato ou a pasta `Titular não informado` como alternativa.
+- Ao iniciar um lote, a fila é executada pelo processo em segundo plano da extensão. Você pode fechar o popup ou trocar de aba; mantenha apenas a aba do portal aberta e a sessão conectada até o fim dos downloads.
 
 ## Validação no computador aceito pela Equatorial
 

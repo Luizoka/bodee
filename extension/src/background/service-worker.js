@@ -35,7 +35,9 @@ async function handleMessage(message) {
     case 'bode.invoices':
       return invoices(tab.id, message.account);
     case 'bode.download':
-      return download(tab.id, message.account, message.holderName, message.invoiceNumber, message.competence);
+      return download(tab.id, message.account, message.holderName, message.consumerUnitNumber, message.invoiceNumber, message.competence);
+    case 'bode.download-batch':
+      return downloadBatch(tab.id, message.downloads);
     default:
       throw new Error('Operação desconhecida.');
   }
@@ -85,7 +87,7 @@ async function invoices(tabId, account) {
   return parseInvoices(result.body);
 }
 
-async function download(tabId, account, holderName, invoiceNumber, competence) {
+async function download(tabId, account, holderName, consumerUnitNumber, invoiceNumber, competence) {
   const url = new URL(`/api/v1/faturas/segunda-via/${encodeURIComponent(requireText(invoiceNumber))}`, API_ORIGIN);
   url.searchParams.set('contaContrato', requireText(account));
   const result = await requestWithCurrentSession(tabId, url.toString());
@@ -94,7 +96,9 @@ async function download(tabId, account, holderName, invoiceNumber, competence) {
   if (!isPdfBase64(base64)) throw new Error('A Equatorial não retornou um PDF válido.');
 
   const holderDirectory = safePathSegment(holderName, 'Titular não informado');
-  const accountDirectory = safePathSegment(account, 'Conta não informada');
+  const accountDirectory = consumerUnitNumber
+    ? safePathSegment(`UC ${consumerUnitNumber} - Conta ${account}`, 'Conta não informada')
+    : safePathSegment(`Conta ${account}`, 'Conta não informada');
   const filename = `BODE/${holderDirectory}/${accountDirectory}/${safeFilename(competence).replace('/', '-')}.pdf`;
   await chrome.downloads.download({
     url: `data:application/pdf;base64,${base64}`,
@@ -102,6 +106,31 @@ async function download(tabId, account, holderName, invoiceNumber, competence) {
     saveAs: false,
   });
   return { filename };
+}
+
+async function downloadBatch(tabId, downloads) {
+  if (!Array.isArray(downloads) || downloads.length === 0) {
+    throw new Error('Nenhuma fatura foi selecionada para download.');
+  }
+
+  let complete = 0;
+  let failed = 0;
+  for (const item of downloads) {
+    try {
+      await download(
+        tabId,
+        item?.account,
+        item?.holderName,
+        item?.consumerUnitNumber,
+        item?.invoiceNumber,
+        item?.competence,
+      );
+      complete += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { complete, failed };
 }
 
 async function requestWithCurrentSession(portalTabId, requestUrl) {
