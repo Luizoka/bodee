@@ -1,36 +1,30 @@
 {
   "manifest_version": 3,
-  "name": "BODE — FaturaSync (POC)",
-  "description": "POC para consultar faturas da Equatorial usando uma sessão autenticada pelo usuário.",
-  "version": "0.1.0",
+  "name": "BODE — Faturas Equatorial",
+  "short_name": "BODE",
+  "description": "Facilita a consulta e o download de faturas no portal da Equatorial Energia.",
+  "version": "1.0.0",
   "icons": {
-    "16": "assets/bode-mascot.png",
-    "32": "assets/bode-mascot.png",
-    "48": "assets/bode-mascot.png",
-    "128": "assets/bode-mascot.png"
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "BODE — FaturaSync",
+    "default_title": "BODE — Faturas Equatorial",
     "default_popup": "src/popup/popup.html",
     "default_icon": {
-      "16": "assets/bode-mascot.png",
-      "32": "assets/bode-mascot.png",
-      "48": "assets/bode-mascot.png",
-      "128": "assets/bode-mascot.png"
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
   },
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["https://pa.equatorialenergia.com.br/siteantigo/*"],
-      "js": ["src/content/equatorial.js"],
-      "run_at": "document_idle"
-    }
-  ],
-  "permissions": ["scripting", "tabs", "downloads"],
+  "permissions": ["scripting", "downloads"],
   "host_permissions": [
     "https://pa.equatorialenergia.com.br/*",
     "https://api-pa-cliente.equatorialenergia.com.br/*"

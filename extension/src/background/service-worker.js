@@ -10,6 +10,8 @@ import {
   readAccessTokenForRequest,
   requestFromApiContext,
 } from '../equatorial/client.js';
+import { downloadFilename } from '../shared/download-path.js';
+import { assertEquatorialSuccess } from '../shared/equatorial-errors.js';
 
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -25,33 +27,47 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 async function handleMessage(message) {
-  const tab = await activePortalTab();
+  if (!message || typeof message.type !== 'string') throw new Error('Mensagem inválida.');
 
   switch (message?.type) {
     case 'bode.status':
-      return sessionStatus(tab.id);
+      return sessionStatusFromActiveTab();
+    case 'bode.open-portal':
+      return openPortal();
     case 'bode.accounts':
-      return accounts(tab.id);
+      return accounts((await activePortalTab()).id);
     case 'bode.invoices':
-      return invoices(tab.id, message.account);
+      return invoices((await activePortalTab()).id, requireText(message.account));
     case 'bode.download':
-      return download(tab.id, message.account, message.holderName, message.consumerUnitNumber, message.invoiceNumber, message.competence);
+      return download((await activePortalTab()).id, message.account, message.holderName, message.consumerUnitNumber, message.invoiceNumber, message.competence);
     case 'bode.download-batch':
-      return downloadBatch(tab.id, message.downloads);
+      return downloadBatch((await activePortalTab()).id, message.downloads);
     default:
       throw new Error('Operação desconhecida.');
   }
 }
 
-async function activePortalTab() {
+async function sessionStatusFromActiveTab() {
+  const tab = await activePortalTab(false);
+  return tab ? sessionStatus(tab.id) : { authenticated: false };
+}
+
+async function activePortalTab(required = true) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id || !tab.url?.startsWith(PORTAL_ORIGIN)) {
+    if (!required) return undefined;
     throw new Error('Abra o portal da Equatorial e faça login antes de usar o BODE.');
   }
   if (!new URL(tab.url).pathname.startsWith('/siteantigo')) {
+    if (!required) return undefined;
     throw new Error('Abra o portal antigo da Equatorial antes de usar o BODE.');
   }
   return tab;
+}
+
+async function openPortal() {
+  const tab = await chrome.tabs.create({ url: `${PORTAL_ORIGIN}/siteantigo/`, active: true });
+  return { tabId: tab.id };
 }
 
 async function executeInPage(tabId, func, args = []) {
@@ -71,7 +87,7 @@ async function sessionStatus(tabId) {
 
 async function accounts(tabId) {
   const result = await executeInPage(tabId, listAccountsFromPortal);
-  assertSuccess(result?.status, 'Não foi possível consultar as unidades consumidoras.');
+  assertEquatorialSuccess(result?.status, 'Não foi possível consultar as unidades consumidoras.');
   const accounts = parseAccounts(result.body);
   if (accounts.length === 0) {
     throw new Error('A sessão está ativa, mas não retornou nenhuma unidade consumidora.');
@@ -83,7 +99,7 @@ async function invoices(tabId, account) {
   const url = new URL(`/api/v1/debitos/${encodeURIComponent(requireText(account))}`, API_ORIGIN);
   url.searchParams.set('listarEmAberto', 'false');
   const result = await requestWithCurrentSession(tabId, url.toString());
-  assertSuccess(result.status, 'Não foi possível consultar as faturas.');
+  assertEquatorialSuccess(result.status, 'Não foi possível consultar as faturas.');
   return parseInvoices(result.body);
 }
 
@@ -91,15 +107,11 @@ async function download(tabId, account, holderName, consumerUnitNumber, invoiceN
   const url = new URL(`/api/v1/faturas/segunda-via/${encodeURIComponent(requireText(invoiceNumber))}`, API_ORIGIN);
   url.searchParams.set('contaContrato', requireText(account));
   const result = await requestWithCurrentSession(tabId, url.toString());
-  assertSuccess(result.status, 'Não foi possível baixar a fatura.');
+  assertEquatorialSuccess(result.status, 'Não foi possível baixar a fatura.');
   const base64 = result.body?.data?.base64;
   if (!isPdfBase64(base64)) throw new Error('A Equatorial não retornou um PDF válido.');
 
-  const holderDirectory = safePathSegment(holderName, 'Titular não informado');
-  const accountDirectory = consumerUnitNumber
-    ? safePathSegment(`UC ${consumerUnitNumber} - Conta ${account}`, 'Conta não informada')
-    : safePathSegment(`Conta ${account}`, 'Conta não informada');
-  const filename = `BODE/${holderDirectory}/${accountDirectory}/${safeFilename(competence).replace('/', '-')}.pdf`;
+  const filename = downloadFilename(holderName, consumerUnitNumber, account, requireText(competence));
   await chrome.downloads.download({
     url: `data:application/pdf;base64,${base64}`,
     filename,
@@ -109,7 +121,7 @@ async function download(tabId, account, holderName, consumerUnitNumber, invoiceN
 }
 
 async function downloadBatch(tabId, downloads) {
-  if (!Array.isArray(downloads) || downloads.length === 0) {
+  if (!Array.isArray(downloads) || downloads.length === 0 || downloads.length > 120) {
     throw new Error('Nenhuma fatura foi selecionada para download.');
   }
 
@@ -117,6 +129,7 @@ async function downloadBatch(tabId, downloads) {
   let failed = 0;
   for (const item of downloads) {
     try {
+      if (!item || typeof item !== 'object') throw new Error('Item de download inválido.');
       await download(
         tabId,
         item?.account,
@@ -165,25 +178,9 @@ function waitForTabLoad(tabId) {
   });
 }
 
-function assertSuccess(status, fallback) {
-  if (status >= 200 && status < 300) return;
-  if (status === 401) throw new Error('A sessão expirou. Faça login novamente na Equatorial.');
-  if (status === 403) throw new Error('A Equatorial recusou esta sessão. Verifique o portal e tente novamente.');
-  throw new Error(fallback);
-}
-
 function requireText(value) {
   if (typeof value !== 'string' || !value.trim()) throw new Error('Dados de consulta inválidos.');
   return value;
-}
-
-function safeFilename(value) {
-  return String(value).replace(/[<>:"\\|?*]/g, '_');
-}
-
-function safePathSegment(value, fallback) {
-  const segment = safeFilename(value || '').replaceAll('/', '_').trim();
-  return segment || fallback;
 }
 
 function safeMessage(error) {

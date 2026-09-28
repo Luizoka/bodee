@@ -1,5 +1,6 @@
 /* global chrome, document */
 const status = document.querySelector('#session-status');
+const openPortal = document.querySelector('#open-portal');
 const loadAccounts = document.querySelector('#load-accounts');
 const invoiceSection = document.querySelector('#invoices-section');
 const accounts = document.querySelector('#accounts');
@@ -12,6 +13,7 @@ let invoicesByAccount = new Map();
 let accountsById = new Map();
 
 loadAccounts.addEventListener('click', () => void refreshAccounts());
+openPortal.addEventListener('click', () => void request('bode.open-portal'));
 accounts.addEventListener('change', () => void refreshInvoices());
 invoices.addEventListener('change', updateDownloadButton);
 selectAllAccounts.addEventListener('click', () => {
@@ -30,12 +32,15 @@ async function refreshStatus() {
     const result = await request('bode.status');
     if (result.authenticated) {
       status.textContent = '● Sessão conectada'; status.className = 'status connected'; loadAccounts.disabled = false;
+      openPortal.hidden = true;
       void refreshAccounts();
       return;
     }
-    status.textContent = '● Faça login no portal da Equatorial'; status.className = 'status disconnected'; loadAccounts.disabled = true;
+    status.textContent = 'Você ainda não está conectado à Equatorial.'; status.className = 'status disconnected'; loadAccounts.disabled = true;
+    openPortal.hidden = false;
   } catch (error) {
-    status.textContent = '● Abra o portal da Equatorial'; status.className = 'status disconnected'; showMessage(error.message, 'error');
+    status.textContent = 'Não foi possível verificar a sessão da Equatorial.'; status.className = 'status disconnected'; openPortal.hidden = false;
+    showMessage(error.message, 'error');
   }
 }
 
@@ -100,10 +105,16 @@ async function downloadSelected() {
     invoiceNumber: invoice.invoiceNumber,
     competence: invoice.competence,
   }));
-  const result = await request('bode.download-batch', { downloads });
-  const unavailableMessage = unavailable ? ` ${unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
-  const failureMessage = result.failed ? ` ${result.failed} falharam.` : '';
-  showMessage(`${result.complete}/${items.length} faturas baixadas.${unavailableMessage}${failureMessage}`, result.failed ? 'error' : 'success'); updateButtons();
+  try {
+    const result = await request('bode.download-batch', { downloads });
+    const unavailableMessage = unavailable ? ` ${unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
+    const failureMessage = result.failed ? ` ${result.failed} falharam.` : '';
+    showMessage(`${result.complete}/${items.length} faturas baixadas.${unavailableMessage}${failureMessage}`, result.failed ? 'error' : 'success');
+  } catch (error) {
+    showMessage(error.message, 'error');
+  } finally {
+    updateButtons();
+  }
 }
 
 function checkedValues(container) { return [...container.querySelectorAll('input:checked')].map((input) => input.value); }

@@ -1,11 +1,14 @@
 {
   "name": "fatura-sync",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Automação independente para coleta de faturas de energia.",
   "license": "UNLICENSED",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:extension": "node scripts/build-extension.mjs",
+    "check:extension": "node scripts/check-extension.mjs",
+    "package:extension": "node scripts/package-extension.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

@@ -1,12 +1,15 @@
-# BODE — extensão Equatorial (POC)
+# BODE — extensão Equatorial
 
-Esta extensão Manifest V3 é uma prova de conceito isolada. Ela não altera nem remove o fluxo Playwright. O usuário faz login normalmente no portal da Equatorial; somente depois disso a extensão consulta unidades, faturas e baixa PDFs usando a sessão vigente no Chrome/Edge.
+Esta é a fonte da extensão Manifest V3. O usuário faz login normalmente no portal
+da Equatorial; somente depois disso o BODE consulta unidades, faturas e baixa PDFs
+usando a sessão vigente no Chrome/Edge. Para instruções de build e distribuição,
+consulte [`docs/chrome-extension.md`](../docs/chrome-extension.md).
 
 ## Instalar no Chrome/Edge
 
 1. Abra `chrome://extensions` (ou `edge://extensions`).
 2. Ative **Modo do desenvolvedor**.
-3. Clique em **Carregar sem compactação** e selecione esta pasta `extension/`.
+3. Clique em **Carregar sem compactação** e selecione `dist-extension/`, após executar `pnpm build:extension`.
 4. Abra `https://pa.equatorialenergia.com.br/siteantigo/` e faça login normalmente.
 5. Abra o popup BODE, atualize as unidades, marque uma ou mais unidades e as competências desejadas. O BODE baixa cada combinação disponível de unidade e competência selecionadas.
 

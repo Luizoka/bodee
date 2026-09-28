@@ -1,7 +1,35 @@
-# FaturaSync
+# BODE — Buscador Online de Documentos de Energia da Equatorial
 
-POC para autenticar no portal da Equatorial com Playwright e usar a API HTTP para
-localizar e baixar uma fatura por competência.
+O BODE é a implementação principal para consultar e baixar faturas do usuário
+autenticado no portal da Equatorial Energia. Ele é uma extensão Chrome Manifest
+V3, independente e sem afiliação oficial com a Equatorial.
+
+## Extensão Chrome
+
+```bash
+pnpm install
+pnpm build:extension
+```
+
+No Chrome, abra `chrome://extensions`, ative o **Modo do desenvolvedor** e
+selecione **Carregar sem compactação** → `dist-extension/`.
+
+Para validar o pacote de produção e gerar o ZIP da Chrome Web Store:
+
+```bash
+pnpm check:extension
+pnpm package:extension
+```
+
+O pacote resultante é criado em `release/bode-extension-<versão>.zip`, com
+`manifest.json` na raiz. Consulte [a documentação da extensão](docs/chrome-extension.md), a
+[política de privacidade](docs/privacy-policy.md) e o [guia de revisão da Store](docs/chrome-web-store-review.md).
+
+## Fluxos legados do FaturaSync
+
+O restante deste repositório contém POCs Node/Playwright e uma API experimental.
+Eles não fazem parte do bundle da extensão, nem são necessários para executar o
+BODE no Chrome.
 
 O desenvolvimento foi dividido em [roteiros menores](./roteiros/README.md). A
 implementação atual está limitada à Parte 01: não há banco, Redis, scheduler ou

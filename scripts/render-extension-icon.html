@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body, canvas { display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <canvas id="icon"></canvas>
+    <script>
+      const size = Number(new URLSearchParams(location.search).get('size')) || 128;
+      const canvas = document.querySelector('#icon');
+      canvas.width = size;
+      canvas.height = size;
+      const image = new Image();
+      image.src = '../extension/assets/bode-mascot.png';
+      image.addEventListener('load', () => {
+        const padding = Math.round(size * 0.04);
+        canvas.getContext('2d').drawImage(image, padding, padding, size - padding * 2, size - padding * 2);
+      });
+    </script>
+  </body>
+</html>
