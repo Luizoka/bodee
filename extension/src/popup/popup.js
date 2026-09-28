@@ -8,6 +8,10 @@ const invoices = document.querySelector('#invoices');
 const selectAllAccounts = document.querySelector('#select-all-accounts');
 const selectAllInvoices = document.querySelector('#select-all-invoices');
 const download = document.querySelector('#download');
+const downloadProgress = document.querySelector('#download-progress');
+const downloadProgressLabel = document.querySelector('#download-progress-label');
+const downloadProgressCount = document.querySelector('#download-progress-count');
+const downloadProgressBar = document.querySelector('#download-progress-bar');
 const message = document.querySelector('#message');
 let invoicesByAccount = new Map();
 let accountsById = new Map();
@@ -45,7 +49,7 @@ async function refreshStatus() {
 }
 
 async function refreshAccounts() {
-  setBusy(loadAccounts, true, 'CARREGANDO…'); clearMessage();
+  setBusy(loadAccounts, true); clearMessage();
   try {
     const availableAccounts = await request('bode.accounts');
     accounts.replaceChildren(); invoices.replaceChildren(); invoicesByAccount = new Map(); accountsById = new Map();
@@ -62,7 +66,7 @@ async function refreshAccounts() {
     }
     invoiceSection.hidden = false; updateButtons();
   } catch (error) { showMessage(error.message, 'error'); }
-  finally { setBusy(loadAccounts, false, 'ATUALIZAR UNIDADES'); }
+  finally { setBusy(loadAccounts, false); }
 }
 
 async function refreshInvoices() {
@@ -105,16 +109,24 @@ async function downloadSelected() {
     invoiceNumber: invoice.invoiceNumber,
     competence: invoice.competence,
   }));
-  try {
-    const result = await request('bode.download-batch', { downloads });
-    const unavailableMessage = unavailable ? ` ${unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
-    const failureMessage = result.failed ? ` ${result.failed} falharam.` : '';
-    showMessage(`${result.complete}/${items.length} faturas baixadas.${unavailableMessage}${failureMessage}`, result.failed ? 'error' : 'success');
-  } catch (error) {
-    showMessage(error.message, 'error');
-  } finally {
-    updateButtons();
+  let complete = 0;
+  let failed = 0;
+  updateDownloadProgress(0, downloads.length);
+  for (const item of downloads) {
+    try {
+      await request('bode.download', item);
+      complete += 1;
+    } catch {
+      failed += 1;
+    }
+    updateDownloadProgress(complete + failed, downloads.length);
   }
+
+  const unavailableMessage = unavailable ? ` ${unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
+  const failureMessage = failed ? ` ${failed} falharam.` : '';
+  downloadProgressLabel.textContent = failed ? 'Download concluído com pendências' : 'Download concluído';
+  showMessage(`${complete}/${items.length} faturas baixadas.${unavailableMessage}${failureMessage}`, failed ? 'error' : 'success');
+  updateButtons();
 }
 
 function checkedValues(container) { return [...container.querySelectorAll('input:checked')].map((input) => input.value); }
@@ -134,6 +146,12 @@ function updateToggleLabel(button, container) {
 }
 function updateDownloadButton() { download.disabled = !checkedValues(accounts).length || !checkedValues(invoices).length; }
 async function request(type, payload = {}) { const response = await chrome.runtime.sendMessage({ type, ...payload }); if (!response?.ok) throw new Error(response?.error || 'Falha inesperada.'); return response.value; }
-function setBusy(button, busy, label) { button.disabled = busy; button.textContent = label; }
+function updateDownloadProgress(current, total) {
+  downloadProgress.hidden = false;
+  downloadProgressCount.textContent = `${current}/${total}`;
+  downloadProgressBar.max = total;
+  downloadProgressBar.value = current;
+}
+function setBusy(button, busy) { button.disabled = busy; button.classList.toggle('is-loading', busy); }
 function showMessage(text, type) { message.textContent = text; message.className = `message ${type}`; }
 function clearMessage() { message.textContent = ''; message.className = 'message'; }

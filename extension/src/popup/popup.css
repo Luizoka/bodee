@@ -6,7 +6,9 @@ main { position: relative; isolation: isolate; min-height: 350px; padding: 16px;
 .brand-logo { width: 150px; height: 48px; object-fit: cover; object-position: center; mix-blend-mode: multiply; }
 .brand p { max-width: 110px; margin: 0; color: #64748b; font-size: 11px; font-weight: 600; line-height: 1.3; text-align: right; }
 label { display: block; margin: 16px 0 6px; font-weight: 700; font-size: 13px; }
+.session-row { display: flex; align-items: center; gap: 7px; min-height: 26px; }
 .status, .message { min-height: 20px; margin: 0; font-size: 13px; }
+.status { font-size: 11px; }
 .status.connected { color: #15803d; }
 .status.disconnected, .message.error { color: #b91c1c; }
 .message.success { color: #15803d; }
@@ -14,6 +16,9 @@ button { box-sizing: border-box; width: 100%; min-height: 38px; border: 0; borde
 button:not(.text-button) { margin-top: 10px; color: white; background: #17212b; box-shadow: 0 2px 4px rgb(23 33 43 / 18%); font-size: 12px; font-weight: 800; letter-spacing: .02em; cursor: pointer; transition: background .15s ease, transform .15s ease; }
 button:not(.text-button):hover:not(:disabled) { background: #263746; transform: translateY(-1px); }
 button:not(.text-button):disabled { cursor: default; background: #94a3b8; box-shadow: none; }
+.reload-button { flex: 0 0 auto; width: 26px; min-height: 26px; margin: 0 !important; padding: 0; border-radius: 50%; font-size: 17px !important; line-height: 1; }
+.reload-button:disabled { visibility: hidden; }
+.reload-button.is-loading span { display: inline-block; animation: spin .8s linear infinite; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; }
 .section-heading label { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px; }
 .label-icon { width: 15px; height: 15px; fill: none; stroke: #64748b; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
@@ -22,4 +27,9 @@ button.text-button { width: auto; min-height: auto; margin: 0; color: #2563eb; b
 .choice, .invoice { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
 .choice:last-child, .invoice:last-child { border-bottom: 0; }
 .choice input, .invoice input { accent-color: #2563eb; }
+.download-progress { margin-top: 12px; padding: 9px 10px; border: 1px solid #bfdbfe; border-radius: 7px; background: #eff6ff; color: #1e3a5f; font-size: 12px; }
+.download-progress div { display: flex; justify-content: space-between; gap: 10px; }
+.download-progress strong { font-size: 12px; }
+.download-progress progress { width: 100%; height: 8px; margin-top: 7px; accent-color: #2563eb; }
 .mascot { position: absolute; right: -20px; bottom: -24px; z-index: -1; width: 106px; opacity: .08; pointer-events: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
