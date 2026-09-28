@@ -3,9 +3,21 @@
   "name": "BODE — FaturaSync (POC)",
   "description": "POC para consultar faturas da Equatorial usando uma sessão autenticada pelo usuário.",
   "version": "0.1.0",
+  "icons": {
+    "16": "assets/bode-mascot.png",
+    "32": "assets/bode-mascot.png",
+    "48": "assets/bode-mascot.png",
+    "128": "assets/bode-mascot.png"
+  },
   "action": {
     "default_title": "BODE — FaturaSync",
-    "default_popup": "src/popup/popup.html"
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/bode-mascot.png",
+      "32": "assets/bode-mascot.png",
+      "48": "assets/bode-mascot.png",
+      "128": "assets/bode-mascot.png"
+    }
   },
   "background": {
     "service_worker": "src/background/service-worker.js",
