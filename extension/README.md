@@ -8,7 +8,7 @@ Esta extensão Manifest V3 é uma prova de conceito isolada. Ela não altera nem
 2. Ative **Modo do desenvolvedor**.
 3. Clique em **Carregar sem compactação** e selecione esta pasta `extension/`.
 4. Abra `https://pa.equatorialenergia.com.br/siteantigo/` e faça login normalmente.
-5. Abra o popup BODE, atualize as unidades, escolha uma unidade e selecione competências para baixar.
+5. Abra o popup BODE, atualize as unidades, marque uma ou mais unidades e as competências desejadas. O BODE baixa cada combinação disponível de unidade e competência selecionadas.
 
 ## Segurança e escopo
 

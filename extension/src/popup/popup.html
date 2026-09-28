@@ -10,13 +10,16 @@
     <main>
       <h1>🐐 BODE</h1>
       <p id="session-status" class="status">Verificando sessão…</p>
-      <label for="account">Unidade</label>
-      <select id="account" disabled><option>Carregue as unidades</option></select>
       <button id="load-accounts" type="button">ATUALIZAR UNIDADES</button>
       <section id="invoices-section" hidden>
         <div class="section-heading">
+          <label>Unidades</label>
+          <button id="select-all-accounts" type="button" class="text-button">Todas</button>
+        </div>
+        <div id="accounts" class="choices"></div>
+        <div class="section-heading">
           <label>Competências</label>
-          <button id="select-all" type="button" class="text-button">Todas</button>
+          <button id="select-all-invoices" type="button" class="text-button">Todas</button>
         </div>
         <div id="invoices" class="invoices"></div>
         <button id="download" type="button" disabled>BAIXAR FATURAS</button>
