@@ -1,4 +1,4 @@
-# BODE — extensão Chrome
+# BODEE — extensão Chrome
 
 ## Arquitetura
 
@@ -31,7 +31,7 @@ pnpm package:extension
 
 Carregue `dist-extension/` em `chrome://extensions` para testar exatamente o
 bundle de produção. `package:extension` reconstrói e valida o bundle e cria
-`release/bode-extension-<versão>.zip`, com o manifest na raiz.
+`release/bodee-extension-<versão>.zip`, com o manifest na raiz.
 
 ## Permissões
 
@@ -52,7 +52,7 @@ Não são usadas permissões `tabs`, `cookies`, `webRequest`, `history`,
 
 ## Dados, armazenamento e logs
 
-O BODE acessa temporariamente a sessão autenticada, unidades, nome do titular,
+O BODEE acessa temporariamente a sessão autenticada, unidades, nome do titular,
 identificadores de unidade/conta, competências, número de fatura e PDF. Esses
 dados não são persistidos pela extensão. JWT, cookies e PDFs vivem apenas em
 memória durante a operação; o PDF é então entregue ao gerenciador de downloads do

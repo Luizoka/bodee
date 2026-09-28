@@ -12,10 +12,11 @@ import {
 import type { InvoiceStorage } from './invoice-storage';
 import { ApiRateLimitMiddleware } from './api-rate-limit.middleware';
 import { StatelessEquatorialService } from './stateless-equatorial.service';
+import { PrivacyController } from '../privacy/privacy.controller';
 
 @Module({
   imports: [PocModule],
-  controllers: [ApiController],
+  controllers: [ApiController, PrivacyController],
   providers: [
     {
       provide: Pool,

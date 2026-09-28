@@ -25,7 +25,7 @@ const createDownloadFilename = downloadFilename as (
 const validateStatus = assertEquatorialSuccess as (status: number, fallback: string) => void;
 function parseManifest(value: string): ExtensionManifest { return JSON.parse(value) as ExtensionManifest; }
 
-describe('cliente da extensão BODE', () => {
+describe('cliente da extensão BODEE', () => {
   it('monta o titular a partir da resposta de autenticação', () => {
     expect(parseAuthenticationHolder({
       dados_complementares: { nome: 'C***DA', sobrenome: 'C***O' },
@@ -67,7 +67,7 @@ describe('cliente da extensão BODE', () => {
 
   it('gera um caminho de download seguro e identificável', () => {
     expect(createDownloadFilename('Ana da Silva', '123456789', '000103958237', '2026/09'))
-      .toBe('BODE/Ana da Silva/UC 123456789 - Conta 000103958237/2026-09.pdf');
+      .toBe('BODEE/Ana da Silva/UC 123456789 - Conta 000103958237/2026-09.pdf');
   });
 
   it('traduz sessões expiradas e recusas do portal em mensagens amigáveis', () => {

@@ -21,7 +21,7 @@ async function collect(directory) {
   return archive;
 }
 
-const filename = `bode-extension-${packageJson.version}.zip`;
+const filename = `bodee-extension-${packageJson.version}.zip`;
 const archive = zipSync(await collect(output), { level: 9 });
 await mkdir(release, { recursive: true });
 await writeFile(join(release, filename), archive);

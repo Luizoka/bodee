@@ -1,7 +1,7 @@
 # Assets da Chrome Web Store
 
 Este diretório não contém screenshots artificiais. Antes da submissão, coloque
-aqui evidências reais do BODE em funcionamento, com dados de demonstração ou
+aqui evidências reais do BODEE em funcionamento, com dados de demonstração ou
 informações sensíveis ocultadas.
 
 ```text

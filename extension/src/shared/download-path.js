@@ -3,7 +3,7 @@ export function downloadFilename(holderName, consumerUnitNumber, account, compet
   const accountDirectory = consumerUnitNumber
     ? safePathSegment(`UC ${consumerUnitNumber} - Conta ${account}`, 'Conta não informada')
     : safePathSegment(`Conta ${account}`, 'Conta não informada');
-  return `BODE/${holderDirectory}/${accountDirectory}/${safeFilename(competence).replace('/', '-')}.pdf`;
+  return `BODEE/${holderDirectory}/${accountDirectory}/${safeFilename(competence).replace('/', '-')}.pdf`;
 }
 
 function safeFilename(value) {

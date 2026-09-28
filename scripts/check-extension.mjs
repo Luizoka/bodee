@@ -2,7 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(new URL('..', import.meta.url).pathname);
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const output = join(root, 'dist-extension');
 const expectedHosts = new Set([
   'https://pa.equatorialenergia.com.br',

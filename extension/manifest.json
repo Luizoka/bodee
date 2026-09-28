@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "BODE — Faturas Equatorial",
-  "short_name": "BODE",
+  "name": "BODEE — Faturas Equatorial",
+  "short_name": "BODEE",
   "description": "Facilita a consulta e o download de faturas no portal da Equatorial Energia.",
   "version": "1.0.0",
   "icons": {
@@ -11,7 +11,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "BODE — Faturas Equatorial",
+    "default_title": "BODEE — Faturas Equatorial",
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

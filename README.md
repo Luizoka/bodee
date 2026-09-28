@@ -1,6 +1,6 @@
-# BODE — Buscador Online de Documentos de Energia da Equatorial
+# BODEE — Buscador Online de Documentos de Energia da Equatorial
 
-O BODE é a implementação principal para consultar e baixar faturas do usuário
+O BODEE é a implementação principal para consultar e baixar faturas do usuário
 autenticado no portal da Equatorial Energia. Ele é uma extensão Chrome Manifest
 V3, independente e sem afiliação oficial com a Equatorial.
 
@@ -21,7 +21,7 @@ pnpm check:extension
 pnpm package:extension
 ```
 
-O pacote resultante é criado em `release/bode-extension-<versão>.zip`, com
+O pacote resultante é criado em `release/bodee-extension-<versão>.zip`, com
 `manifest.json` na raiz. Consulte [a documentação da extensão](docs/chrome-extension.md), a
 [política de privacidade](docs/privacy-policy.md) e o [guia de revisão da Store](docs/chrome-web-store-review.md).
 
@@ -29,7 +29,7 @@ O pacote resultante é criado em `release/bode-extension-<versão>.zip`, com
 
 O restante deste repositório contém POCs Node/Playwright e uma API experimental.
 Eles não fazem parte do bundle da extensão, nem são necessários para executar o
-BODE no Chrome.
+BODEE no Chrome.
 
 O desenvolvimento foi dividido em [roteiros menores](./roteiros/README.md). A
 implementação atual está limitada à Parte 01: não há banco, Redis, scheduler ou

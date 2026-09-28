@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import 'reflect-metadata';
 
+import { RequestMethod } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
@@ -30,7 +31,9 @@ async function main(): Promise<void> {
 
   const app = await NestFactory.create(ApiModule);
   app.enableShutdownHooks();
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [{ path: 'privacy', method: RequestMethod.GET }],
+  });
   if (databaseUrl) await app.get(ApiService).initialize();
   const document = SwaggerModule.createDocument(
     app,

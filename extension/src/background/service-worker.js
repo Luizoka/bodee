@@ -58,11 +58,11 @@ async function activePortalTab(required = true) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id || !tab.url?.startsWith(PORTAL_ORIGIN)) {
     if (!required) return undefined;
-    throw new Error('Abra o portal da Equatorial e faça login antes de usar o BODE.');
+    throw new Error('Abra o portal da Equatorial e faça login antes de usar o BODEE.');
   }
   if (!new URL(tab.url).pathname.startsWith('/siteantigo')) {
     if (!required) return undefined;
-    throw new Error('Abra o portal antigo da Equatorial antes de usar o BODE.');
+    throw new Error('Abra o portal antigo da Equatorial antes de usar o BODEE.');
   }
   return tab;
 }

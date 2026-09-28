@@ -2,19 +2,19 @@
 
 ## Propósito único
 
-> O BODE facilita a consulta e o download de faturas de energia para usuários autenticados no portal da Equatorial Energia.
+> O BODEE facilita a consulta e o download de faturas de energia para usuários autenticados no portal da Equatorial Energia.
 
 ## Funcionamento
 
 1. O usuário acessa o portal da Equatorial.
 2. O usuário realiza sua própria autenticação.
-3. O BODE detecta a sessão autenticada existente.
+3. O BODEE detecta a sessão autenticada existente.
 4. O usuário seleciona unidades e competências.
-5. O BODE consulta as faturas disponíveis.
-6. O BODE solicita as segundas vias selecionadas.
+5. O BODEE consulta as faturas disponíveis.
+6. O BODEE solicita as segundas vias selecionadas.
 7. Os documentos são entregues ao usuário pelo gerenciador de downloads do Chrome.
 
-O BODE não executa login, não solicita credenciais, não contorna CAPTCHAs e não
+O BODEE não executa login, não solicita credenciais, não contorna CAPTCHAs e não
 possui vínculo oficial com a Equatorial Energia.
 
 ## Permissões
@@ -49,5 +49,5 @@ esta tabela e à política de privacidade publicada.
 
 O revisor precisa de uma conta Equatorial autorizada e sessão ativa no portal do
 Pará. Abra `https://pa.equatorialenergia.com.br/siteantigo/`, autentique-se de
-forma normal, abra o BODE, marque uma unidade e uma competência e inicie o
+forma normal, abra o BODEE, marque uma unidade e uma competência e inicie o
 download. Sem sessão, o popup exibe um botão para abrir o portal.
