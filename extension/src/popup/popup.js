@@ -8,6 +8,8 @@ const accountSearch = document.querySelector('#account-search');
 const invoices = document.querySelector('#invoices');
 const selectAllAccounts = document.querySelector('#select-all-accounts');
 const selectAllInvoices = document.querySelector('#select-all-invoices');
+const selectedAccountsCount = document.querySelector('#selected-accounts-count');
+const selectedInvoicesCount = document.querySelector('#selected-invoices-count');
 const download = document.querySelector('#download');
 const downloadProgress = document.querySelector('#download-progress');
 const downloadProgressLabel = document.querySelector('#download-progress-label');
@@ -205,8 +207,11 @@ function toggleAll(container) {
 function updateButtons() {
   updateToggleLabel(selectAllAccounts, accounts);
   updateToggleLabel(selectAllInvoices, invoices);
+  updateSelectedCount(selectedAccountsCount, checkedValues(accounts).length);
+  updateSelectedCount(selectedInvoicesCount, checkedValues(invoices).length);
   updateDownloadButton();
 }
+function updateSelectedCount(element, count) { element.textContent = count ? `(${count})` : ''; }
 function updateToggleLabel(button, container) {
   const checkboxes = container.querySelectorAll('input[type="checkbox"]');
   button.textContent = checkboxes.length && [...checkboxes].every((checkbox) => checkbox.checked) ? 'Nenhuma' : 'Todas';
