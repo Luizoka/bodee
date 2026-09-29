@@ -37,6 +37,15 @@ domínios da Equatorial já usados pelo portal autenticado:
 O BODEE não transmite dados a servidores próprios nem compartilha dados com
 terceiros para publicidade, análise, perfilamento ou venda.
 
+## Limited Use
+
+O uso das informações recebidas pelo BODE está em conformidade com a Política de
+Dados do Usuário da Chrome Web Store, incluindo os requisitos de Limited Use. Os
+dados são usados somente para fornecer a funcionalidade visível de consulta e
+download de faturas solicitada pelo usuário. Eles não são vendidos, usados para
+publicidade personalizada ou baseada em interesses, nem disponibilizados para
+leitura humana pelo desenvolvedor.
+
 ## Controle do usuário
 
 O usuário escolhe as unidades e competências antes de cada lote. Pode remover a
