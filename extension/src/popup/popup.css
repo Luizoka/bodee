@@ -16,7 +16,7 @@ button { box-sizing: border-box; width: 100%; min-height: 38px; border: 0; borde
 button:not(.text-button) { margin-top: 10px; color: white; background: #17212b; box-shadow: 0 2px 4px rgb(23 33 43 / 18%); font-size: 12px; font-weight: 800; letter-spacing: .02em; cursor: pointer; transition: background .15s ease, transform .15s ease; }
 button:not(.text-button):hover:not(:disabled) { background: #263746; transform: translateY(-1px); }
 button:not(.text-button):disabled { cursor: default; background: #94a3b8; box-shadow: none; }
-.reload-button { flex: 0 0 auto; width: 26px; min-height: 26px; margin: 0 !important; padding: 0; border-radius: 50%; font-size: 17px !important; line-height: 1; }
+.reload-button { flex: 0 0 auto; width: 26px; min-height: 26px; margin: 0 0 0 auto !important; padding: 0; border-radius: 50%; font-size: 17px !important; line-height: 1; }
 .reload-button:disabled { visibility: hidden; }
 .reload-button.is-loading span { display: inline-block; animation: spin .8s linear infinite; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; }
