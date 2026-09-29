@@ -81,7 +81,7 @@ describe('manifesto da extensão', () => {
   it('usa Manifest V3, ícones oficiais e hosts restritos', async () => {
     const manifest = parseManifest(await readFile(join(process.cwd(), 'extension', 'manifest.json'), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.0.0');
+    expect(manifest.version).toBe('1.0.1');
     expect(manifest.permissions).toEqual(['scripting', 'downloads']);
     expect(manifest.host_permissions).toEqual([
       'https://pa.equatorialenergia.com.br/*',
