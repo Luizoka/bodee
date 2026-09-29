@@ -24,7 +24,7 @@
     "service_worker": "src/background/service-worker.js",
     "type": "module"
   },
-  "permissions": ["scripting", "downloads"],
+  "permissions": ["scripting", "downloads", "storage", "alarms"],
   "host_permissions": [
     "https://pa.equatorialenergia.com.br/*",
     "https://api-pa-cliente.equatorialenergia.com.br/*"

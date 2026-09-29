@@ -82,7 +82,7 @@ describe('manifesto da extensão', () => {
     const manifest = parseManifest(await readFile(join(process.cwd(), 'extension', 'manifest.json'), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.version).toBe('1.0.1');
-    expect(manifest.permissions).toEqual(['scripting', 'downloads']);
+    expect(manifest.permissions).toEqual(['scripting', 'downloads', 'storage', 'alarms']);
     expect(manifest.host_permissions).toEqual([
       'https://pa.equatorialenergia.com.br/*',
       'https://api-pa-cliente.equatorialenergia.com.br/*',

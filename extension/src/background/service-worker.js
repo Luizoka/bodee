@@ -15,6 +15,9 @@ import {
 import { downloadFilename } from '../shared/download-path.js';
 import { assertEquatorialSuccess } from '../shared/equatorial-errors.js';
 
+const downloadJobStorageKey = 'bode.download-job';
+const downloadQueueAlarm = 'bode.download-queue';
+
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'bode.portal-ready') {
@@ -26,6 +29,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     .then((value) => sendResponse({ ok: true, value }))
     .catch((error) => sendResponse({ ok: false, error: safeMessage(error) }));
   return true;
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === downloadQueueAlarm) void processDownloadQueue();
 });
 
 async function handleMessage(message) {
@@ -44,9 +51,80 @@ async function handleMessage(message) {
       return download((await activePortalTab()).id, message.account, message.holderName, message.consumerUnitNumber, message.invoiceNumber, message.competence);
     case 'bode.download-batch':
       return downloadBatch((await activePortalTab()).id, message.downloads);
+    case 'bode.download-queue':
+      return startDownloadQueue((await activePortalTab()).id, message.downloads);
+    case 'bode.download-status':
+      return readDownloadJob();
     default:
       throw new Error('Operação desconhecida.');
   }
+}
+
+async function startDownloadQueue(portalTabId, downloads) {
+  if (!Array.isArray(downloads) || downloads.length === 0 || downloads.length > 120) {
+    throw new Error('Nenhuma fatura foi selecionada para download.');
+  }
+  const existing = await readDownloadJob();
+  if (existing?.status === 'RUNNING') throw new Error('Já existe um download em andamento.');
+
+  const job = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    status: 'RUNNING',
+    portalTabId,
+    total: downloads.length,
+    complete: 0,
+    failed: 0,
+    items: downloads.map((item) => ({ ...item, status: 'PENDING' })),
+  };
+  await saveDownloadJob(job);
+  await chrome.alarms.create(downloadQueueAlarm, { periodInMinutes: 0.5 });
+  void processDownloadQueue();
+  return job;
+}
+
+async function processDownloadQueue() {
+  while (true) {
+    const job = await readDownloadJob();
+    if (!job || job.status !== 'RUNNING') return;
+
+    const item = job.items.find((candidate) => candidate.status === 'PENDING' || candidate.status === 'DOWNLOADING');
+    if (!item) {
+      job.status = 'COMPLETED';
+      await saveDownloadJob(job);
+      await chrome.alarms.clear(downloadQueueAlarm);
+      return;
+    }
+
+    item.status = 'DOWNLOADING';
+    await saveDownloadJob(job);
+    try {
+      const result = await download(
+        job.portalTabId,
+        item.account,
+        item.holderName,
+        item.consumerUnitNumber,
+        item.invoiceNumber,
+        item.competence,
+      );
+      item.status = 'COMPLETED';
+      item.filename = result.filename;
+      job.complete += 1;
+    } catch (error) {
+      item.status = 'FAILED';
+      item.error = safeMessage(error);
+      job.failed += 1;
+    }
+    await saveDownloadJob(job);
+  }
+}
+
+async function readDownloadJob() {
+  const stored = await chrome.storage.session.get(downloadJobStorageKey);
+  return stored[downloadJobStorageKey];
+}
+
+async function saveDownloadJob(job) {
+  await chrome.storage.session.set({ [downloadJobStorageKey]: job });
 }
 
 async function sessionStatusFromActiveTab() {

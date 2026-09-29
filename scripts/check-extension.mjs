@@ -41,7 +41,7 @@ if (!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(manifest.version)) fail('Versão do manife
 if (!manifest.name || !manifest.description || !manifest.action?.default_popup || !manifest.background?.service_worker) {
   fail('Manifest sem metadados ou entradas obrigatórias.');
 }
-if (JSON.stringify(manifest.permissions) !== JSON.stringify(['scripting', 'downloads'])) {
+if (JSON.stringify(manifest.permissions) !== JSON.stringify(['scripting', 'downloads', 'storage', 'alarms'])) {
   fail('Permissões inesperadas no manifest.');
 }
 if (JSON.stringify(manifest.host_permissions) !== JSON.stringify([...expectedHosts].map((host) => `${host}/*`))) {

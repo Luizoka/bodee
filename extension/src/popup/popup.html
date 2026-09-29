@@ -23,6 +23,7 @@
           <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6M9 11h.01M15 11h.01" /></svg>Unidades</label>
           <button id="select-all-accounts" type="button" class="text-button">Todas</button>
         </div>
+        <input id="account-search" class="account-search" type="search" placeholder="Pesquisar por UC, conta ou titular" aria-label="Pesquisar unidades consumidoras" autocomplete="off" />
         <div id="accounts" class="choices"></div>
         <div class="section-heading">
           <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>Competências</label>
@@ -34,6 +35,7 @@
       <section id="download-progress" class="download-progress" aria-live="polite" hidden>
         <div><strong id="download-progress-label">Baixando faturas</strong><span id="download-progress-count">0/0</span></div>
         <progress id="download-progress-bar" value="0" max="1"></progress>
+        <ul id="download-queue-items" class="download-queue-items" aria-label="Situação das faturas"></ul>
       </section>
       <p id="message" class="message" role="status"></p>
       <img class="mascot" src="../../assets/bode-mascot.png" alt="" />
