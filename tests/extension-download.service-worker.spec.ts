@@ -18,6 +18,7 @@ async function loadWorker(options: {
   let listener: MessageListener | undefined;
   let alarmListener: ((alarm: { name: string }) => void) | undefined;
   const session: Record<string, unknown> = {};
+  const local: Record<string, unknown> = {};
   const downloadsDownload = vi.fn(async () => {
     if (options.downloadError) throw options.downloadError;
     return 1;
@@ -52,6 +53,11 @@ async function loadWorker(options: {
           get: vi.fn(async (key: string) => ({ [key]: session[key] })),
           set: vi.fn(async (values: Record<string, unknown>) => { Object.assign(session, values); }),
         },
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: local[key] })),
+          set: vi.fn(async (values: Record<string, unknown>) => { Object.assign(local, values); }),
+          remove: vi.fn(async (key: string) => { delete local[key]; }),
+        },
       },
     },
   });
@@ -62,6 +68,7 @@ async function loadWorker(options: {
   return {
     downloadsDownload,
     job() { return session['bode.download-job']; },
+    diagnostic() { return local['bode.last-diagnostic']; },
     fireQueue() { alarmListener?.({ name: 'bode.download-queue' }); },
     send(message: unknown) {
       return new Promise<ExtensionResponse>((resolve) => {
@@ -97,6 +104,24 @@ describe('download da extensão', () => {
         city: undefined,
       }],
     });
+  });
+
+  it('inclui diagnóstico seguro quando a consulta de unidades falha', async () => {
+    const worker = await loadWorker({ portalAccounts: [] });
+    const executeScript = (globalThis as unknown as { chrome: { scripting: { executeScript: ReturnType<typeof vi.fn> } } }).chrome.scripting.executeScript;
+    executeScript.mockImplementationOnce(async ({ func }: { func: { name: string } }) => {
+      if (func.name === 'listAccountsFromPortal') return [{ result: {
+        status: 404,
+        diagnostic: { operation: 'units', status: 404, contentType: 'text/html', response: 'não JSON' },
+      } }];
+      return [{ result: undefined }];
+    });
+
+    await expect(worker.send({ type: 'bode.accounts' })).resolves.toEqual({
+      ok: false,
+      error: 'Não foi possível consultar as unidades consumidoras. (Diagnóstico BODEE: unidades; HTTP 404 · text/html · não JSON.)',
+    });
+    expect(worker.diagnostic()).toMatchObject({ operation: 'units', status: 404, contentType: 'text/html' });
   });
 
   it('baixa o PDF e sanitiza caracteres perigosos do nome do titular', async () => {

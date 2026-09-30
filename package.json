@@ -1,6 +1,6 @@
 {
   "name": "fatura-sync",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Automação independente para coleta de faturas de energia.",
   "license": "UNLICENSED",

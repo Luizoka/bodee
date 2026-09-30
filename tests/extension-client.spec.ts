@@ -58,6 +58,14 @@ describe('cliente da extensão BODEE', () => {
     ]);
   });
 
+  it('aceita o formato em maiúsculas gravado pelo cache do portal', () => {
+    expect(parseAccountList([{ Numero: '000103958237', NumeroInstalacao: '123456789', UcMascarada: '1.234.567.890-12' }]))
+      .toEqual([{
+        id: '000103958237', holderName: undefined, consumerUnitNumber: '1.234.567.890-12',
+        installationNumber: '123456789', address: undefined, city: undefined,
+      }]);
+  });
+
   it('usa os dados já presentes na sessão para associar a UC correta à CC', () => {
     const tokenPayload = Buffer.from(JSON.stringify({
       userData: {
@@ -109,7 +117,7 @@ describe('manifesto da extensão', () => {
   it('usa Manifest V3, ícones oficiais e hosts restritos', async () => {
     const manifest = parseManifest(await readFile(join(process.cwd(), 'extension', 'manifest.json'), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.0.2');
+    expect(manifest.version).toBe('1.0.3');
     expect(manifest.permissions).toEqual(['scripting', 'downloads', 'storage', 'alarms']);
     expect(manifest.host_permissions).toEqual([
       'https://pa.equatorialenergia.com.br/*',

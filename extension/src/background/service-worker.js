@@ -1,4 +1,4 @@
-/* global chrome, URL, setTimeout, clearTimeout */
+/* global chrome, URL, setTimeout, clearTimeout, console */
 import {
   API_ORIGIN,
   PORTAL_ORIGIN,
@@ -17,6 +17,7 @@ import { assertEquatorialSuccess } from '../shared/equatorial-errors.js';
 
 const downloadJobStorageKey = 'bode.download-job';
 const downloadQueueAlarm = 'bode.download-queue';
+const lastDiagnosticStorageKey = 'bode.last-diagnostic';
 
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -55,6 +56,8 @@ async function handleMessage(message) {
       return startDownloadQueue((await activePortalTab()).id, message.downloads);
     case 'bode.download-status':
       return readDownloadJob();
+    case 'bode.last-diagnostic':
+      return readLastDiagnostic();
     default:
       throw new Error('Operação desconhecida.');
   }
@@ -171,7 +174,14 @@ async function sessionStatus(tabId) {
 
 async function accounts(tabId) {
   const result = await executeInPage(tabId, listAccountsFromPortal);
-  assertEquatorialSuccess(result?.status, 'Não foi possível consultar as unidades consumidoras.');
+  try {
+    assertEquatorialSuccess(result?.status, 'Não foi possível consultar as unidades consumidoras.');
+  } catch (error) {
+    const diagnostic = sanitizeDiagnostic(result?.diagnostic, result?.status);
+    await saveDiagnostic(diagnostic);
+    console.warn('[BODEE] Consulta de unidades falhou', diagnostic);
+    throw new Error(`${safeMessage(error)} ${formatDiagnostic(diagnostic)}`, { cause: error });
+  }
   const profile = await executeInPage(tabId, readPortalProfile);
   const profileAccounts = new Map((profile?.accounts || []).map((account) => [account.id, account]));
   const accounts = parseAccounts(result.body).map((account) => ({
@@ -185,9 +195,47 @@ async function accounts(tabId) {
       : {}),
   }));
   if (accounts.length === 0) {
+    const diagnostic = { operation: 'units', status: result?.status, response: 'lista sem unidades' };
+    await saveDiagnostic(diagnostic);
+    console.warn('[BODEE] Consulta de unidades sem resultado', diagnostic);
     throw new Error('A sessão está ativa, mas não retornou nenhuma unidade consumidora.');
   }
+  await clearDiagnostic();
   return accounts;
+}
+
+async function readLastDiagnostic() {
+  const stored = await chrome.storage.local.get(lastDiagnosticStorageKey);
+  return stored[lastDiagnosticStorageKey];
+}
+
+async function saveDiagnostic(diagnostic) {
+  await chrome.storage.local.set({ [lastDiagnosticStorageKey]: { ...diagnostic, occurredAt: new Date().toISOString() } });
+}
+
+async function clearDiagnostic() {
+  await chrome.storage.local.remove(lastDiagnosticStorageKey);
+}
+
+function sanitizeDiagnostic(value, status) {
+  const candidate = value && typeof value === 'object' ? value : {};
+  return {
+    operation: typeof candidate.operation === 'string' ? candidate.operation : 'units',
+    status: Number.isInteger(candidate.status) ? candidate.status : status,
+    ...(typeof candidate.contentType === 'string' ? { contentType: candidate.contentType.slice(0, 80) } : {}),
+    ...(typeof candidate.response === 'string' ? { response: candidate.response.slice(0, 120) } : {}),
+    ...(typeof candidate.reason === 'string' ? { reason: candidate.reason.slice(0, 80) } : {}),
+  };
+}
+
+function formatDiagnostic(diagnostic) {
+  const details = [
+    diagnostic.status === 0 ? 'sem resposta HTTP' : `HTTP ${diagnostic.status}`,
+    diagnostic.contentType,
+    diagnostic.response,
+    diagnostic.reason,
+  ].filter(Boolean).join(' · ');
+  return `(Diagnóstico BODEE: unidades; ${details || 'sem detalhes'}.)`;
 }
 
 async function invoices(tabId, account) {

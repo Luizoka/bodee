@@ -1,4 +1,4 @@
-/* global window, fetch, URL, atob */
+/* global window, fetch, URL, atob, console, XMLHttpRequest */
 export const PORTAL_ORIGIN = 'https://pa.equatorialenergia.com.br';
 export const API_ORIGIN = 'https://api-pa-cliente.equatorialenergia.com.br';
 const holderNameStorageKey = 'bode.equatorial.holder-name';
@@ -90,17 +90,45 @@ export function readPortalProfile() {
  */
 export async function listAccountsFromPortal() {
   const token = readToken();
-  if (!token) return { status: 401, body: undefined };
+  if (!token) return {
+    status: 401,
+    body: undefined,
+    diagnostic: { operation: 'units', status: 401, reason: 'token ausente' },
+  };
 
-  const response = await fetch(
-    new URL('/siteantigo/ajax-requests/ajax-uc-contas-contrato/', window.location.origin),
-    {
+  // O próprio portal preenche este cache após autenticar. Preferi-lo evita uma
+  // segunda chamada desnecessária e mantém o mesmo comportamento da página.
+  const cachedAccounts = readAccountCache();
+  if (cachedAccounts) return {
+    status: 200,
+    body: cachedAccounts,
+    diagnostic: { operation: 'units', status: 200, source: 'cache da sessão' },
+  };
+
+  const path = '/siteantigo/ajax-requests/ajax-uc-contas-contrato/';
+  try {
+    const response = await fetch(new URL(path, window.location.origin), {
       headers: { accept: 'application/json', authorization: `Bearer ${token}` },
       credentials: 'include',
-    },
-  );
-  const body = await response.json().catch(() => undefined);
-  return { status: response.status, body };
+    });
+    const body = await response.json().catch(() => undefined);
+    const diagnostic = {
+      operation: 'units',
+      status: response.status,
+      contentType: response.headers.get('content-type') || 'ausente',
+      response: summarizeResponse(body),
+    };
+    if (!response.ok) console.warn('[BODEE] Falha ao consultar unidades', diagnostic);
+    return { status: response.status, body, diagnostic };
+  } catch (error) {
+    const diagnostic = {
+      operation: 'units',
+      status: 0,
+      reason: error instanceof Error ? error.name : 'erro de rede desconhecido',
+    };
+    console.warn('[BODEE] Erro de rede ao consultar unidades', diagnostic);
+    return { status: 0, body: undefined, diagnostic };
+  }
 }
 
 /**
@@ -134,21 +162,21 @@ export function parseAccounts(value) {
   const byId = new Map();
   for (const item of value) {
     if (!item || typeof item !== 'object') continue;
-    const id = item.numero ?? item.id ?? item.contaContrato ?? item.uc;
+    const id = item.numero ?? item.Numero ?? item.id ?? item.contaContrato ?? item.ContaContrato ?? item.uc ?? item.Uc;
     if (typeof id !== 'string' && typeof id !== 'number') continue;
     const text = String(id);
     byId.set(text, {
       id: text,
       holderName: optionalString(
-        item.nomeTitular ?? item.nomeDoTitular ?? item.nomeCliente ?? item.titular ?? item.nome ?? item.razaoSocial,
+        item.nomeTitular ?? item.NomeTitular ?? item.nomeDoTitular ?? item.nomeCliente ?? item.titular ?? item.nome ?? item.razaoSocial,
       ),
       consumerUnitNumber: optionalString(
         item.ucMascarada ?? item.UcMascarada ?? item.uc ?? item.Uc ??
-        item.unidadeConsumidora ?? item.codigoUnidadeConsumidora ?? item.numeroInstalacao,
+        item.unidadeConsumidora ?? item.codigoUnidadeConsumidora ?? item.numeroInstalacao ?? item.NumeroInstalacao,
       ),
-      installationNumber: optionalString(item.numeroInstalacao),
-      address: optionalString(item.endereco),
-      city: optionalString(item.cidade),
+      installationNumber: optionalString(item.numeroInstalacao ?? item.NumeroInstalacao),
+      address: optionalString(item.endereco ?? item.Endereco),
+      city: optionalString(item.cidade ?? item.Cidade),
     });
   }
   return [...byId.values()];
@@ -190,6 +218,13 @@ function optionalString(value) {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
 }
 
+/** Metadados sem valores da resposta, seguros para diagnóstico no cliente. */
+function summarizeResponse(value) {
+  if (Array.isArray(value)) return `lista (${value.length} item(ns))`;
+  if (!value || typeof value !== 'object') return value === undefined ? 'não JSON' : typeof value;
+  return `objeto (${Object.keys(value).slice(0, 8).join(', ') || 'sem campos'})`;
+}
+
 function readToken() {
   const tokenKeys = ['access_token', 'accessToken', 'jwt'];
   for (const storage of [window.localStorage, window.sessionStorage]) {
@@ -199,6 +234,15 @@ function readToken() {
     }
   }
   return undefined;
+}
+
+function readAccountCache() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem('contasContrato') || '');
+    return Array.isArray(value) && value.length > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function readComplementaryData() {
