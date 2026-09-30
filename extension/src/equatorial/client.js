@@ -2,7 +2,6 @@
 export const PORTAL_ORIGIN = 'https://pa.equatorialenergia.com.br';
 export const API_ORIGIN = 'https://api-pa-cliente.equatorialenergia.com.br';
 const holderNameStorageKey = 'bode.equatorial.holder-name';
-const authenticationCaptureFlag = '__bodeAuthenticationCaptureInstalled';
 
 /**
  * Esta função é injetada no mundo principal da página. Não retorne o token:
@@ -29,8 +28,13 @@ export async function probePortalSession() {
  * e credenciais jamais são lidos ou enviados à extensão.
  */
 export function installAuthenticationHolderCapture() {
-  if (window[authenticationCaptureFlag]) return;
-  window[authenticationCaptureFlag] = true;
+  // Funções passadas a chrome.scripting.executeScript são serializadas e não
+  // carregam o escopo léxico deste módulo. Por isso, esta função só pode usar
+  // variáveis declaradas dentro dela ou globais da página.
+  const captureFlag = '__bodeAuthenticationCaptureInstalled';
+  const captureKey = 'bode.equatorial.holder-name';
+  if (window[captureFlag]) return;
+  window[captureFlag] = true;
 
   const originalOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function open(method, url, ...rest) {
@@ -43,8 +47,13 @@ export function installAuthenticationHolderCapture() {
       this.addEventListener('loadend', () => {
         if (this.status < 200 || this.status >= 300) return;
         try {
-          const holderName = parseHolderName(JSON.parse(this.responseText));
-          if (holderName) window.sessionStorage.setItem(holderNameStorageKey, holderName);
+          const complementaryData = JSON.parse(this.responseText)?.dados_complementares;
+          const holderName = [complementaryData?.nome, complementaryData?.sobrenome]
+            .filter((part) => typeof part === 'string' || typeof part === 'number')
+            .map((part) => String(part).trim())
+            .filter(Boolean)
+            .join(' ') || undefined;
+          if (holderName) window.sessionStorage.setItem(captureKey, holderName);
         } catch {
           // Uma resposta inesperada não deve afetar a autenticação do portal.
         }
@@ -65,20 +74,56 @@ export function readCapturedHolderName() {
  * vínculo entre conta-contrato e UC.
  */
 export function readPortalProfile() {
-  const token = readToken();
-  const jwtData = parseJwtPayload(token);
-  const complementaryData = readComplementaryData();
+  // Esta função roda no MAIN world; mantenha seus auxiliares locais para que
+  // eles existam após chrome.scripting serializá-la.
+  const optionalText = (value) => typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
+  const readTokenFromStorage = () => {
+    for (const storage of [window.localStorage, window.sessionStorage]) {
+      for (const key of ['access_token', 'accessToken', 'jwt']) {
+        const value = storage.getItem(key);
+        if (value && value.split('.').length === 3) return value;
+      }
+    }
+    return undefined;
+  };
+  const readComplementaryDataFromStorage = () => {
+    for (const key of ['dados_complementares', 'dadosComplementares']) {
+      try {
+        const value = JSON.parse(window.sessionStorage.getItem(key) || '');
+        if (value && typeof value === 'object') return value;
+      } catch { /* cache ausente ou inválido */ }
+    }
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      try {
+        const key = window.sessionStorage.key(index);
+        const value = key && JSON.parse(window.sessionStorage.getItem(key) || '');
+        if (value && typeof value === 'object' && (value.nome || value.sobrenome)) return value;
+      } catch { /* outros itens não são dados cadastrais */ }
+    }
+    return undefined;
+  };
+  const parseJwt = (value) => {
+    if (!value) return undefined;
+    try {
+      const payload = value.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const text = decodeURIComponent([...atob(payload)].map((character) => `%${character.charCodeAt(0).toString(16).padStart(2, '0')}`).join(''));
+      return JSON.parse(text);
+    } catch { return undefined; }
+  };
+  const token = readTokenFromStorage();
+  const jwtData = parseJwt(token);
+  const complementaryData = readComplementaryDataFromStorage();
   const jwtHolderName = [jwtData?.userData?.Nome, jwtData?.userData?.Sobrenome]
-    .map(optionalString).filter(Boolean).join(' ') || undefined;
+    .map(optionalText).filter(Boolean).join(' ') || undefined;
   const holderName =
-    parseHolderName({ dados_complementares: complementaryData }) ??
-    readCapturedHolderName() ??
+    [complementaryData?.nome, complementaryData?.sobrenome].map(optionalText).map((part) => part?.trim()).filter(Boolean).join(' ') ||
+    optionalText(window.sessionStorage.getItem('bode.equatorial.holder-name'))?.trim() ||
     jwtHolderName;
   const accounts = Array.isArray(jwtData?.userData?.ContasContrato)
     ? jwtData.userData.ContasContrato.map((account) => ({
-      id: optionalString(account?.Numero ?? account?.numero),
-      consumerUnitNumber: optionalString(account?.UcMascarada ?? account?.ucMascarada ?? account?.Uc ?? account?.uc),
-      installationNumber: optionalString(account?.NumeroInstalacao ?? account?.numeroInstalacao),
+      id: optionalText(account?.Numero ?? account?.numero),
+      consumerUnitNumber: optionalText(account?.UcMascarada ?? account?.ucMascarada ?? account?.Uc ?? account?.uc),
+      installationNumber: optionalText(account?.NumeroInstalacao ?? account?.numeroInstalacao),
     })).filter((account) => account.id)
     : [];
   return { holderName, accounts };
@@ -89,7 +134,28 @@ export function readPortalProfile() {
  * fechado nesta função e não é enviado à extensão.
  */
 export async function listAccountsFromPortal() {
-  const token = readToken();
+  // executeScript não preserva os helpers do módulo: use apenas funções locais.
+  const readTokenFromStorage = () => {
+    for (const storage of [window.localStorage, window.sessionStorage]) {
+      for (const key of ['access_token', 'accessToken', 'jwt']) {
+        const value = storage.getItem(key);
+        if (value && value.split('.').length === 3) return value;
+      }
+    }
+    return undefined;
+  };
+  const readCachedAccounts = () => {
+    try {
+      const value = JSON.parse(window.localStorage.getItem('contasContrato') || '');
+      return Array.isArray(value) && value.length > 0 ? value : undefined;
+    } catch { return undefined; }
+  };
+  const summarize = (value) => {
+    if (Array.isArray(value)) return `lista (${value.length} item(ns))`;
+    if (!value || typeof value !== 'object') return value === undefined ? 'não JSON' : typeof value;
+    return `objeto (${Object.keys(value).slice(0, 8).join(', ') || 'sem campos'})`;
+  };
+  const token = readTokenFromStorage();
   if (!token) return {
     status: 401,
     body: undefined,
@@ -98,7 +164,7 @@ export async function listAccountsFromPortal() {
 
   // O próprio portal preenche este cache após autenticar. Preferi-lo evita uma
   // segunda chamada desnecessária e mantém o mesmo comportamento da página.
-  const cachedAccounts = readAccountCache();
+  const cachedAccounts = readCachedAccounts();
   if (cachedAccounts) return {
     status: 200,
     body: cachedAccounts,
@@ -116,7 +182,7 @@ export async function listAccountsFromPortal() {
       operation: 'units',
       status: response.status,
       contentType: response.headers.get('content-type') || 'ausente',
-      response: summarizeResponse(body),
+      response: summarize(body),
     };
     if (!response.ok) console.warn('[BODEE] Falha ao consultar unidades', diagnostic);
     return { status: response.status, body, diagnostic };
@@ -216,63 +282,4 @@ export function isPdfBase64(value) {
 
 function optionalString(value) {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
-}
-
-/** Metadados sem valores da resposta, seguros para diagnóstico no cliente. */
-function summarizeResponse(value) {
-  if (Array.isArray(value)) return `lista (${value.length} item(ns))`;
-  if (!value || typeof value !== 'object') return value === undefined ? 'não JSON' : typeof value;
-  return `objeto (${Object.keys(value).slice(0, 8).join(', ') || 'sem campos'})`;
-}
-
-function readToken() {
-  const tokenKeys = ['access_token', 'accessToken', 'jwt'];
-  for (const storage of [window.localStorage, window.sessionStorage]) {
-    for (const key of tokenKeys) {
-      const value = storage.getItem(key);
-      if (value && value.split('.').length === 3) return value;
-    }
-  }
-  return undefined;
-}
-
-function readAccountCache() {
-  try {
-    const value = JSON.parse(window.localStorage.getItem('contasContrato') || '');
-    return Array.isArray(value) && value.length > 0 ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function readComplementaryData() {
-  for (const key of ['dados_complementares', 'dadosComplementares']) {
-    try {
-      const value = JSON.parse(window.sessionStorage.getItem(key) || '');
-      if (value && typeof value === 'object') return value;
-    } catch {
-      // A ausência desse cache é normal em sessões iniciadas antes da extensão.
-    }
-  }
-  for (let index = 0; index < window.sessionStorage.length; index += 1) {
-    try {
-      const key = window.sessionStorage.key(index);
-      const value = key && JSON.parse(window.sessionStorage.getItem(key) || '');
-      if (value && typeof value === 'object' && (value.nome || value.sobrenome)) return value;
-    } catch {
-      // Outros valores da sessão não fazem parte dos dados cadastrais.
-    }
-  }
-  return undefined;
-}
-
-function parseJwtPayload(token) {
-  if (!token) return undefined;
-  try {
-    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const text = decodeURIComponent([...atob(payload)].map((character) => `%${character.charCodeAt(0).toString(16).padStart(2, '0')}`).join(''));
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
 }

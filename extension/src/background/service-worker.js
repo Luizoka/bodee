@@ -173,11 +173,22 @@ async function sessionStatus(tabId) {
 }
 
 async function accounts(tabId) {
-  const result = await executeInPage(tabId, listAccountsFromPortal);
+  let result;
   try {
-    assertEquatorialSuccess(result?.status, 'Não foi possível consultar as unidades consumidoras.');
+    result = await executeInPage(tabId, listAccountsFromPortal);
   } catch (error) {
-    const diagnostic = sanitizeDiagnostic(result?.diagnostic, result?.status);
+    const diagnostic = { operation: 'units', status: 0, reason: `falha ao executar na página: ${safeMessage(error)}` };
+    await saveDiagnostic(diagnostic);
+    console.warn('[BODEE] Consulta de unidades falhou', diagnostic);
+    throw new Error(`Não foi possível consultar as unidades consumidoras. ${formatDiagnostic(diagnostic)}`, { cause: error });
+  }
+  try {
+    assertEquatorialSuccess(Number.isInteger(result?.status) ? result.status : 0, 'Não foi possível consultar as unidades consumidoras.');
+  } catch (error) {
+    const diagnostic = sanitizeDiagnostic(
+      result?.diagnostic ?? { reason: 'a página não retornou o resultado da consulta' },
+      Number.isInteger(result?.status) ? result.status : 0,
+    );
     await saveDiagnostic(diagnostic);
     console.warn('[BODEE] Consulta de unidades falhou', diagnostic);
     throw new Error(`${safeMessage(error)} ${formatDiagnostic(diagnostic)}`, { cause: error });

@@ -124,6 +124,23 @@ describe('download da extensão', () => {
     expect(worker.diagnostic()).toMatchObject({ operation: 'units', status: 404, contentType: 'text/html' });
   });
 
+  it('registra a ausência do resultado injetado sem exibir HTTP indefinido', async () => {
+    const worker = await loadWorker();
+    const executeScript = (globalThis as unknown as { chrome: { scripting: { executeScript: ReturnType<typeof vi.fn> } } }).chrome.scripting.executeScript;
+    executeScript.mockImplementationOnce(async ({ func }: { func: { name: string } }) => {
+      if (func.name === 'listAccountsFromPortal') return [{ result: undefined }];
+      return [{ result: undefined }];
+    });
+
+    await expect(worker.send({ type: 'bode.accounts' })).resolves.toEqual({
+      ok: false,
+      error: 'Não foi possível consultar as unidades consumidoras. (Diagnóstico BODEE: unidades; sem resposta HTTP · a página não retornou o resultado da consulta.)',
+    });
+    expect(worker.diagnostic()).toMatchObject({
+      operation: 'units', status: 0, reason: 'a página não retornou o resultado da consulta',
+    });
+  });
+
   it('baixa o PDF e sanitiza caracteres perigosos do nome do titular', async () => {
     const worker = await loadWorker();
     const response = await worker.send({
