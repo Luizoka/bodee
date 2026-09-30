@@ -160,9 +160,12 @@ async function persistPopupState() {
 
 function renderDownloadJob(job) {
   downloadJob = job;
-  if (!job) { downloadQueueItems.replaceChildren(); updateButtons(); return; }
+  if (!job) { downloadProgress.hidden = true; downloadProgress.classList.remove('is-complete'); downloadQueueItems.replaceChildren(); updateButtons(); return; }
   const processed = job.complete + job.failed;
-  updateDownloadProgress(processed, job.total);
+  const isComplete = job.status !== 'RUNNING' && !job.failed;
+  downloadProgress.classList.toggle('is-complete', isComplete);
+  if (job.status === 'RUNNING') updateDownloadProgress(processed, job.total);
+  else downloadProgress.hidden = false;
   renderDownloadQueueItems(job.items);
   if (job.status === 'RUNNING') {
     downloadProgressLabel.textContent = `Baixando faturas (${job.items.find((item) => item.status === 'DOWNLOADING')?.competence || 'aguardando'})`;
@@ -171,7 +174,8 @@ function renderDownloadJob(job) {
     const unavailableMessage = job.unavailable ? ` ${job.unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
     const failureMessage = job.failed ? ` ${job.failed} falharam.` : '';
     downloadProgressLabel.textContent = job.failed ? 'Download concluído com pendências' : 'Download concluído';
-    showMessage(`${job.complete}/${job.total} faturas baixadas.${unavailableMessage}${failureMessage}`, job.failed ? 'error' : 'success');
+    const downloadedMessage = `${job.complete} ${job.complete === 1 ? 'fatura baixada' : 'faturas baixadas'}.`;
+    showMessage(`${downloadedMessage}${unavailableMessage}${failureMessage}`, job.failed ? 'error' : 'success');
   }
   updateButtons();
 }
@@ -220,6 +224,7 @@ function updateDownloadButton() { download.disabled = downloadJob?.status === 'R
 async function request(type, payload = {}) { const response = await chrome.runtime.sendMessage({ type, ...payload }); if (!response?.ok) throw new Error(response?.error || 'Falha inesperada.'); return response.value; }
 function updateDownloadProgress(current, total) {
   downloadProgress.hidden = false;
+  downloadProgress.classList.remove('is-complete');
   downloadProgressCount.textContent = `${current}/${total}`;
   downloadProgressBar.max = total;
   downloadProgressBar.value = current;

@@ -8,7 +8,7 @@ import {
   parseAccounts,
   parseInvoices,
   probePortalSession,
-  readCapturedHolderName,
+  readPortalProfile,
   readAccessTokenForRequest,
   requestFromApiContext,
 } from '../equatorial/client.js';
@@ -172,10 +172,17 @@ async function sessionStatus(tabId) {
 async function accounts(tabId) {
   const result = await executeInPage(tabId, listAccountsFromPortal);
   assertEquatorialSuccess(result?.status, 'Não foi possível consultar as unidades consumidoras.');
-  const holderName = await executeInPage(tabId, readCapturedHolderName);
+  const profile = await executeInPage(tabId, readPortalProfile);
+  const profileAccounts = new Map((profile?.accounts || []).map((account) => [account.id, account]));
   const accounts = parseAccounts(result.body).map((account) => ({
     ...account,
-    ...(holderName && !account.holderName ? { holderName } : {}),
+    ...(profile?.holderName && !account.holderName ? { holderName: profile.holderName } : {}),
+    ...(profileAccounts.get(account.id)?.consumerUnitNumber
+      ? { consumerUnitNumber: profileAccounts.get(account.id).consumerUnitNumber }
+      : {}),
+    ...(profileAccounts.get(account.id)?.installationNumber && !account.installationNumber
+      ? { installationNumber: profileAccounts.get(account.id).installationNumber }
+      : {}),
   }));
   if (accounts.length === 0) {
     throw new Error('A sessão está ativa, mas não retornou nenhuma unidade consumidora.');

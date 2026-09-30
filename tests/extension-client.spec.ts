@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseAccounts, parseHolderName, parseInvoices } from '../extension/src/equatorial/client.js';
+import { parseAccounts, parseHolderName, parseInvoices, readPortalProfile } from '../extension/src/equatorial/client.js';
 import { downloadFilename } from '../extension/src/shared/download-path.js';
 import { assertEquatorialSuccess } from '../extension/src/shared/equatorial-errors.js';
 
@@ -16,6 +16,10 @@ type ExtensionManifest = {
 const parseAccountList = parseAccounts as (value: unknown) => unknown;
 const parseAuthenticationHolder = parseHolderName as (value: unknown) => string | undefined;
 const parseInvoiceList = parseInvoices as (value: unknown) => unknown;
+const readCurrentPortalProfile = readPortalProfile as () => {
+  holderName?: string;
+  accounts: Array<{ id: string; consumerUnitNumber?: string; installationNumber?: string }>;
+};
 const createDownloadFilename = downloadFilename as (
   holder: string | undefined,
   unit: string | undefined,
@@ -37,6 +41,7 @@ describe('cliente da extensão BODEE', () => {
       {
         numero: '000103958237',
         numeroInstalacao: '123456789',
+        ucMascarada: '1.234.567.890-12',
         nomeTitular: 'Ana da Silva',
         endereco: 'Rua Exemplo',
         cidade: 'Belém',
@@ -45,12 +50,35 @@ describe('cliente da extensão BODEE', () => {
       {
         id: '000103958237',
         holderName: 'Ana da Silva',
-        consumerUnitNumber: '123456789',
+        consumerUnitNumber: '1.234.567.890-12',
         installationNumber: '123456789',
         address: 'Rua Exemplo',
         city: 'Belém',
       },
     ]);
+  });
+
+  it('usa os dados já presentes na sessão para associar a UC correta à CC', () => {
+    const tokenPayload = Buffer.from(JSON.stringify({
+      userData: {
+        Nome: 'Claudio Moacy de',
+        Sobrenome: 'Carvalho Navarro Neto',
+        ContasContrato: [{ Numero: '003013204461', UcMascarada: '3.816.331.013-70', NumeroInstalacao: '2000613418' }],
+      },
+    })).toString('base64url');
+    const storage = new Map([['jwt', `header.${tokenPayload}.signature`]]);
+    Object.assign(globalThis, {
+      window: {
+        localStorage: { getItem: (key: string) => storage.get(key) ?? null },
+        sessionStorage: { getItem: () => null },
+      },
+    });
+
+    expect(readCurrentPortalProfile()).toEqual({
+      holderName: 'Claudio Moacy de Carvalho Navarro Neto',
+      accounts: [{ id: '003013204461', consumerUnitNumber: '3.816.331.013-70', installationNumber: '2000613418' }],
+    });
+    delete (globalThis as { window?: unknown }).window;
   });
 
   it('mantém apenas faturas com número e competência válidos', () => {
@@ -81,7 +109,7 @@ describe('manifesto da extensão', () => {
   it('usa Manifest V3, ícones oficiais e hosts restritos', async () => {
     const manifest = parseManifest(await readFile(join(process.cwd(), 'extension', 'manifest.json'), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.0.1');
+    expect(manifest.version).toBe('1.0.2');
     expect(manifest.permissions).toEqual(['scripting', 'downloads', 'storage', 'alarms']);
     expect(manifest.host_permissions).toEqual([
       'https://pa.equatorialenergia.com.br/*',

@@ -60,21 +60,35 @@ export function readCapturedHolderName() {
 }
 
 /**
+ * Lê somente os dados de identificação já presentes na sessão do portal.
+ * O JWT nunca deixa o contexto da página: dele retornamos apenas nome e o
+ * vínculo entre conta-contrato e UC.
+ */
+export function readPortalProfile() {
+  const token = readToken();
+  const jwtData = parseJwtPayload(token);
+  const complementaryData = readComplementaryData();
+  const jwtHolderName = [jwtData?.userData?.Nome, jwtData?.userData?.Sobrenome]
+    .map(optionalString).filter(Boolean).join(' ') || undefined;
+  const holderName =
+    parseHolderName({ dados_complementares: complementaryData }) ??
+    readCapturedHolderName() ??
+    jwtHolderName;
+  const accounts = Array.isArray(jwtData?.userData?.ContasContrato)
+    ? jwtData.userData.ContasContrato.map((account) => ({
+      id: optionalString(account?.Numero ?? account?.numero),
+      consumerUnitNumber: optionalString(account?.UcMascarada ?? account?.ucMascarada ?? account?.Uc ?? account?.uc),
+      installationNumber: optionalString(account?.NumeroInstalacao ?? account?.numeroInstalacao),
+    })).filter((account) => account.id)
+    : [];
+  return { holderName, accounts };
+}
+
+/**
  * Busca as contas no mesmo contexto do portal autenticado. O token fica
  * fechado nesta função e não é enviado à extensão.
  */
 export async function listAccountsFromPortal() {
-  const tokenKeys = ['access_token', 'accessToken', 'jwt'];
-  const readToken = () => {
-    for (const storage of [window.localStorage, window.sessionStorage]) {
-      for (const key of tokenKeys) {
-        const value = storage.getItem(key);
-        if (value && value.split('.').length === 3) return value;
-      }
-    }
-    return undefined;
-  };
-
   const token = readToken();
   if (!token) return { status: 401, body: undefined };
 
@@ -129,7 +143,8 @@ export function parseAccounts(value) {
         item.nomeTitular ?? item.nomeDoTitular ?? item.nomeCliente ?? item.titular ?? item.nome ?? item.razaoSocial,
       ),
       consumerUnitNumber: optionalString(
-        item.numeroInstalacao ?? item.unidadeConsumidora ?? item.codigoUnidadeConsumidora ?? item.uc,
+        item.ucMascarada ?? item.UcMascarada ?? item.uc ?? item.Uc ??
+        item.unidadeConsumidora ?? item.codigoUnidadeConsumidora ?? item.numeroInstalacao,
       ),
       installationNumber: optionalString(item.numeroInstalacao),
       address: optionalString(item.endereco),
@@ -173,4 +188,47 @@ export function isPdfBase64(value) {
 
 function optionalString(value) {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
+}
+
+function readToken() {
+  const tokenKeys = ['access_token', 'accessToken', 'jwt'];
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    for (const key of tokenKeys) {
+      const value = storage.getItem(key);
+      if (value && value.split('.').length === 3) return value;
+    }
+  }
+  return undefined;
+}
+
+function readComplementaryData() {
+  for (const key of ['dados_complementares', 'dadosComplementares']) {
+    try {
+      const value = JSON.parse(window.sessionStorage.getItem(key) || '');
+      if (value && typeof value === 'object') return value;
+    } catch {
+      // A ausência desse cache é normal em sessões iniciadas antes da extensão.
+    }
+  }
+  for (let index = 0; index < window.sessionStorage.length; index += 1) {
+    try {
+      const key = window.sessionStorage.key(index);
+      const value = key && JSON.parse(window.sessionStorage.getItem(key) || '');
+      if (value && typeof value === 'object' && (value.nome || value.sobrenome)) return value;
+    } catch {
+      // Outros valores da sessão não fazem parte dos dados cadastrais.
+    }
+  }
+  return undefined;
+}
+
+function parseJwtPayload(token) {
+  if (!token) return undefined;
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const text = decodeURIComponent([...atob(payload)].map((character) => `%${character.charCodeAt(0).toString(16).padStart(2, '0')}`).join(''));
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
