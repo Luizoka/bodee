@@ -12,6 +12,8 @@ const validPdf = Buffer.from('%PDF-1.7\n', 'utf8').toString('base64');
 async function loadWorker(options: {
   apiResponse?: { status: number; body?: unknown };
   downloadError?: Error;
+  portalAccounts?: unknown[];
+  portalProfile?: unknown;
 } = {}) {
   let listener: MessageListener | undefined;
   let alarmListener: ((alarm: { name: string }) => void) | undefined;
@@ -36,6 +38,8 @@ async function loadWorker(options: {
       },
       scripting: {
         executeScript: vi.fn(async ({ func }: { func: { name: string } }) => {
+          if (func.name === 'listAccountsFromPortal') return [{ result: { status: 200, body: options.portalAccounts ?? [] } }];
+          if (func.name === 'readPortalProfile') return [{ result: options.portalProfile }];
           if (func.name === 'readAccessTokenForRequest') return [{ result: 'header.payload.signature' }];
           if (func.name === 'requestFromApiContext') return [{ result: apiResponse }];
           return [{ result: undefined }];
@@ -73,6 +77,28 @@ afterEach(() => {
 });
 
 describe('download da extensão', () => {
+  it('associa a UC mascarada e o titular do perfil à conta-contrato correta', async () => {
+    const worker = await loadWorker({
+      portalAccounts: [{ numero: '003013204461', numeroInstalacao: '2000613418' }],
+      portalProfile: {
+        holderName: 'Claudio Moacy de Carvalho Navarro Neto',
+        accounts: [{ id: '003013204461', consumerUnitNumber: '3.816.331.013-70', installationNumber: '2000613418' }],
+      },
+    });
+
+    await expect(worker.send({ type: 'bode.accounts' })).resolves.toEqual({
+      ok: true,
+      value: [{
+        id: '003013204461',
+        holderName: 'Claudio Moacy de Carvalho Navarro Neto',
+        consumerUnitNumber: '3.816.331.013-70',
+        installationNumber: '2000613418',
+        address: undefined,
+        city: undefined,
+      }],
+    });
+  });
+
   it('baixa o PDF e sanitiza caracteres perigosos do nome do titular', async () => {
     const worker = await loadWorker();
     const response = await worker.send({
