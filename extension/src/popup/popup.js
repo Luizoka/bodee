@@ -8,6 +8,10 @@ const accountSearch = document.querySelector('#account-search');
 const invoices = document.querySelector('#invoices');
 const selectAllAccounts = document.querySelector('#select-all-accounts');
 const selectAllInvoices = document.querySelector('#select-all-invoices');
+const accountsContent = document.querySelector('#accounts-content');
+const invoicesContent = document.querySelector('#invoices-content');
+const accountsToggle = document.querySelector('#accounts-toggle');
+const invoicesToggle = document.querySelector('#invoices-toggle');
 const selectedAccountsCount = document.querySelector('#selected-accounts-count');
 const selectedInvoicesCount = document.querySelector('#selected-invoices-count');
 const download = document.querySelector('#download');
@@ -17,6 +21,7 @@ const downloadProgressCount = document.querySelector('#download-progress-count')
 const downloadProgressBar = document.querySelector('#download-progress-bar');
 const downloadQueueItems = document.querySelector('#download-queue-items');
 const downloadQueueToggle = document.querySelector('#download-queue-toggle');
+const downloadQueueNote = document.querySelector('#download-queue-note');
 const message = document.querySelector('#message');
 const popupStateStorageKey = 'bode.popup-state';
 const downloadJobStorageKey = 'bode.download-job';
@@ -41,6 +46,8 @@ selectAllInvoices.addEventListener('click', () => {
   updateDownloadButton();
   void persistPopupState();
 });
+accountsToggle.addEventListener('click', () => toggleSection(accountsToggle, accountsContent, 'unidades'));
+invoicesToggle.addEventListener('click', () => toggleSection(invoicesToggle, invoicesContent, 'competências'));
 download.addEventListener('click', () => void downloadSelected());
 downloadQueueToggle.addEventListener('click', () => void toggleDownloadQueue());
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -187,10 +194,11 @@ async function persistPopupState() {
 
 function renderDownloadJob(job) {
   downloadJob = job;
-  if (!job) { downloadProgress.hidden = true; downloadProgress.classList.remove('is-complete'); downloadQueueItems.replaceChildren(); updateButtons(); return; }
+  if (!job) { downloadProgress.hidden = true; downloadQueueNote.hidden = true; downloadProgress.classList.remove('is-complete'); downloadQueueItems.replaceChildren(); updateButtons(); return; }
   const processed = job.complete + job.failed;
   const isComplete = job.status !== 'RUNNING' && !job.failed;
   downloadProgress.classList.toggle('is-complete', isComplete);
+  downloadQueueNote.hidden = job.status !== 'RUNNING';
   setDownloadQueueMinimized(job.status === 'RUNNING' && downloadQueueMinimized);
   if (job.status === 'RUNNING') updateDownloadProgress(processed, job.total);
   else downloadProgress.hidden = false;
@@ -210,14 +218,27 @@ function renderDownloadJob(job) {
 
 function setDownloadQueueMinimized(minimized) {
   downloadProgress.classList.toggle('is-minimized', minimized);
-  downloadQueueToggle.textContent = minimized ? 'Expandir' : 'Minimizar';
+  const action = minimized ? 'Expandir' : 'Minimizar';
+  downloadQueueToggle.textContent = minimized ? '^' : 'v';
   downloadQueueToggle.setAttribute('aria-expanded', String(!minimized));
+  downloadQueueToggle.setAttribute('aria-label', `${action} fila`);
+  downloadQueueToggle.title = `${action} fila`;
 }
 
 async function toggleDownloadQueue() {
   downloadQueueMinimized = !downloadQueueMinimized;
   setDownloadQueueMinimized(downloadQueueMinimized);
   await chrome.storage.session.set({ [downloadQueueMinimizedStorageKey]: downloadQueueMinimized });
+}
+
+function toggleSection(toggle, content, name) {
+  const minimized = !content.hidden;
+  content.hidden = minimized;
+  toggle.textContent = minimized ? '⌄' : '⌃';
+  toggle.setAttribute('aria-expanded', String(!minimized));
+  const action = minimized ? 'Expandir' : 'Minimizar';
+  toggle.setAttribute('aria-label', `${action} ${name}`);
+  toggle.title = `${action} ${name}`;
 }
 
 function renderDownloadQueueItems(items) {

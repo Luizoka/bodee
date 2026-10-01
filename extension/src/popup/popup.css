@@ -21,6 +21,9 @@ button:not(.text-button):disabled { cursor: default; background: #94a3b8; box-sh
 .reload-button.is-loading span { display: inline-block; animation: spin .8s linear infinite; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; }
 .section-heading label { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px; }
+.section-actions { display: inline-flex; align-items: center; gap: 8px; }
+button.section-toggle { width: 16px; min-height: 16px; margin: 0; padding: 0; border-radius: 0; color: #64748b; background: transparent; box-shadow: none; font-size: 16px; font-weight: 500; line-height: 1; }
+button.section-toggle:hover:not(:disabled) { color: #17212b; background: transparent; transform: none; }
 .label-icon { width: 15px; height: 15px; fill: none; stroke: #64748b; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .selected-count { color: #64748b; font-size: 11px; font-weight: 600; }
 button.text-button { width: auto; min-height: auto; margin: 0; color: #2563eb; background: transparent; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -36,8 +39,8 @@ button.text-button { width: auto; min-height: auto; margin: 0; color: #2563eb; b
 .download-progress-heading { min-width: 0; }
 .download-progress-actions { flex: 0 0 auto; }
 .download-progress strong { font-size: 12px; }
-.queue-toggle { width: auto; min-height: auto; margin: 0; padding: 0; color: #2563eb; background: transparent; box-shadow: none; font-size: 11px; font-weight: 700; cursor: pointer; }
-.queue-toggle:hover { color: #1d4ed8; text-decoration: underline; }
+.queue-toggle { width: auto; min-height: auto; margin: 0; padding: 0; color: #2563eb; background: transparent; box-shadow: none; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; }
+.queue-toggle:hover { color: #1d4ed8; }
 .download-progress progress { width: 100%; height: 8px; margin-top: 7px; accent-color: #2563eb; }
 .download-complete-icon { display: none; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; color: #fff; background: #16a34a; font-size: 12px; font-weight: 800; }
 .download-progress.is-complete { display: flex; align-items: center; gap: 7px; border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
@@ -49,8 +52,8 @@ button.text-button { width: auto; min-height: auto; margin: 0; color: #2563eb; b
 .download-queue-items li:last-child { border-bottom: 0; }
 .download-queue-items .queue-status { flex: 0 0 auto; font-weight: 700; }
 .download-queue-items .queue-status.failed { color: #b91c1c; }
-.download-queue-note { margin: 7px 0 0; color: #3b5b7f; font-size: 10px; line-height: 1.25; }
-.download-progress.is-minimized progress, .download-progress.is-minimized .download-queue-items, .download-progress.is-minimized .download-queue-note { display: none; }
-.download-progress.is-complete .queue-toggle, .download-progress.is-complete .download-queue-note { display: none; }
+.download-queue-note { margin: 7px 0 0; color: #64748b; font-size: 10px; line-height: 1.25; }
+.download-progress.is-minimized progress, .download-progress.is-minimized .download-queue-items { display: none; }
+.download-progress.is-complete .queue-toggle { display: none; }
 .mascot { position: absolute; right: -20px; bottom: -24px; z-index: -1; width: 106px; opacity: .08; pointer-events: none; }
 @keyframes spin { to { transform: rotate(360deg); } }

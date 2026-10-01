@@ -19,29 +19,37 @@
       </div>
       <button id="open-portal" type="button" hidden>ABRIR PORTAL DA EQUATORIAL</button>
       <section id="invoices-section" hidden>
-        <div class="section-heading">
-          <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21h.01M15 11h.01" /></svg><span>Unidades</span><span id="selected-accounts-count" class="selected-count"></span></label>
-          <button id="select-all-accounts" type="button" class="text-button">Todas</button>
+        <div class="selection-section">
+          <div class="section-heading">
+            <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21h.01M15 11h.01" /></svg><span>Unidades</span><span id="selected-accounts-count" class="selected-count"></span></label>
+            <span class="section-actions"><button id="select-all-accounts" type="button" class="text-button">Todas</button><button id="accounts-toggle" class="section-toggle" type="button" aria-controls="accounts-content" aria-expanded="true" aria-label="Minimizar unidades" title="Minimizar unidades">⌃</button></span>
+          </div>
+          <div id="accounts-content" class="selection-content">
+            <input id="account-search" class="account-search" type="search" placeholder="Pesquisar por UC, conta ou titular" aria-label="Pesquisar unidades consumidoras" autocomplete="off" />
+            <div id="accounts" class="choices"></div>
+          </div>
         </div>
-        <input id="account-search" class="account-search" type="search" placeholder="Pesquisar por UC, conta ou titular" aria-label="Pesquisar unidades consumidoras" autocomplete="off" />
-        <div id="accounts" class="choices"></div>
-        <div class="section-heading">
-          <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg><span>Competências</span><span id="selected-invoices-count" class="selected-count"></span></label>
-          <button id="select-all-invoices" type="button" class="text-button">Todas</button>
+        <div class="selection-section">
+          <div class="section-heading">
+            <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" /></svg><span>Competências</span><span id="selected-invoices-count" class="selected-count"></span></label>
+            <span class="section-actions"><button id="select-all-invoices" type="button" class="text-button">Todas</button><button id="invoices-toggle" class="section-toggle" type="button" aria-controls="invoices-content" aria-expanded="true" aria-label="Minimizar competências" title="Minimizar competências">⌃</button></span>
+          </div>
+          <div id="invoices-content" class="selection-content">
+            <div id="invoices" class="invoices"></div>
+          </div>
         </div>
-        <div id="invoices" class="invoices"></div>
         <button id="download" type="button" disabled><span aria-hidden="true">↓</span> BAIXAR FATURAS</button>
       </section>
       <section id="download-progress" class="download-progress" aria-live="polite" hidden>
         <span id="download-complete-icon" class="download-complete-icon" aria-hidden="true">✓</span>
         <div class="download-progress-heading">
           <strong id="download-progress-label">Baixando faturas</strong>
-          <span class="download-progress-actions"><span id="download-progress-count">0/0</span><button id="download-queue-toggle" class="queue-toggle" type="button" aria-expanded="true">Minimizar</button></span>
+          <span class="download-progress-actions"><span id="download-progress-count">0/0</span><button id="download-queue-toggle" class="queue-toggle" type="button" aria-expanded="true" aria-label="Minimizar fila" title="Minimizar fila">v</button></span>
         </div>
         <progress id="download-progress-bar" value="0" max="1"></progress>
         <ul id="download-queue-items" class="download-queue-items" aria-label="Situação das faturas"></ul>
-        <p id="download-queue-note" class="download-queue-note">A fila continua se você fechar o popup.</p>
       </section>
+      <p id="download-queue-note" class="download-queue-note" hidden>A fila continua se você fechar o popup.</p>
       <p id="message" class="message" role="status"></p>
       <img class="mascot" src="../../assets/bode-mascot.png" alt="" />
     </main>
