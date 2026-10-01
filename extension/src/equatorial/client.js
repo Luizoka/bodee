@@ -33,6 +33,7 @@ export function installAuthenticationHolderCapture() {
   // variáveis declaradas dentro dela ou globais da página.
   const captureFlag = '__bodeAuthenticationCaptureInstalled';
   const captureKey = 'bode.equatorial.holder-name';
+  const loginRevisionKey = 'bode.equatorial.login-revision';
   if (window[captureFlag]) return;
   window[captureFlag] = true;
 
@@ -54,6 +55,10 @@ export function installAuthenticationHolderCapture() {
             .filter(Boolean)
             .join(' ') || undefined;
           if (holderName) window.sessionStorage.setItem(captureKey, holderName);
+          // Uma autenticação bem-sucedida sempre recebe uma revisão nova. Ela
+          // não contém credenciais e permite invalidar o cache do popup mesmo
+          // se o portal conservar algum campo cadastral do login anterior.
+          window.sessionStorage.setItem(loginRevisionKey, `${Date.now()}-${Math.random().toString(36).slice(2)}`);
         } catch {
           // Uma resposta inesperada não deve afetar a autenticação do portal.
         }
@@ -77,6 +82,8 @@ export function readPortalProfile() {
   // Esta função roda no MAIN world; mantenha seus auxiliares locais para que
   // eles existam após chrome.scripting serializá-la.
   const optionalText = (value) => typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
+  const capturedHolderName = optionalText(window.sessionStorage.getItem('bode.equatorial.holder-name'))?.trim() || undefined;
+  const loginRevision = optionalText(window.sessionStorage.getItem('bode.equatorial.login-revision'))?.trim() || undefined;
   const readTokenFromStorage = () => {
     for (const storage of [window.localStorage, window.sessionStorage]) {
       for (const key of ['access_token', 'accessToken', 'jwt']) {
@@ -115,10 +122,12 @@ export function readPortalProfile() {
   const complementaryData = readComplementaryDataFromStorage();
   const jwtHolderName = [jwtData?.userData?.Nome, jwtData?.userData?.Sobrenome]
     .map(optionalText).filter(Boolean).join(' ') || undefined;
-  const holderName =
-    [complementaryData?.nome, complementaryData?.sobrenome].map(optionalText).map((part) => part?.trim()).filter(Boolean).join(' ') ||
-    optionalText(window.sessionStorage.getItem('bode.equatorial.holder-name'))?.trim() ||
-    jwtHolderName;
+  const complementaryHolderName = [complementaryData?.nome, complementaryData?.sobrenome]
+    .map(optionalText).map((part) => part?.trim()).filter(Boolean).join(' ') || undefined;
+  // O JWT pertence à sessão atual; caches complementares do portal podem
+  // sobreviver a uma troca de login. A captura é usada quando o JWT não traz
+  // o nome, mas é atualizada junto com a revisão acima após cada login.
+  const holderName = jwtHolderName || complementaryHolderName || capturedHolderName;
   const accounts = Array.isArray(jwtData?.userData?.ContasContrato)
     ? jwtData.userData.ContasContrato.map((account) => ({
       id: optionalText(account?.Numero ?? account?.numero),
@@ -126,7 +135,7 @@ export function readPortalProfile() {
       installationNumber: optionalText(account?.NumeroInstalacao ?? account?.numeroInstalacao),
     })).filter((account) => account.id)
     : [];
-  return { holderName, accounts };
+  return { holderName, accounts, loginRevision };
 }
 
 /**

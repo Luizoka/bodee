@@ -12,14 +12,23 @@ const validPdf = Buffer.from('%PDF-1.7\n', 'utf8').toString('base64');
 async function loadWorker(options: {
   apiResponse?: { status: number; body?: unknown };
   downloadError?: Error;
+  alarmBurstsDuringDownload?: number;
+  initialJob?: unknown;
+  onDownload?: () => void;
+  portalAuthenticated?: boolean;
   portalAccounts?: unknown[];
-  portalProfile?: unknown;
+  portalProfile?: unknown | (() => unknown);
 } = {}) {
   let listener: MessageListener | undefined;
   let alarmListener: ((alarm: { name: string }) => void) | undefined;
-  const session: Record<string, unknown> = {};
+  const tabUpdatedListeners = new Set<(id: number, change: { status: string }, tab?: { url?: string }) => void>();
+  const session: Record<string, unknown> = options.initialJob ? { 'bode.download-job': options.initialJob } : {};
   const local: Record<string, unknown> = {};
   const downloadsDownload = vi.fn(async () => {
+    options.onDownload?.();
+    for (let index = 0; index < (options.alarmBurstsDuringDownload ?? 0); index += 1) {
+      alarmListener?.({ name: 'bode.download-queue' });
+    }
     if (options.downloadError) throw options.downloadError;
     return 1;
   });
@@ -33,14 +42,18 @@ async function loadWorker(options: {
         create: vi.fn(async () => ({ id: 20 })),
         remove: vi.fn(async () => undefined),
         onUpdated: {
-          addListener: (callback: (id: number, change: { status: string }) => void) => queueMicrotask(() => callback(20, { status: 'complete' })),
-          removeListener: vi.fn(),
+          addListener: (callback: (id: number, change: { status: string }, tab?: { url?: string }) => void) => {
+            tabUpdatedListeners.add(callback);
+            queueMicrotask(() => callback(20, { status: 'complete' }));
+          },
+          removeListener: vi.fn((callback: (id: number, change: { status: string }, tab?: { url?: string }) => void) => tabUpdatedListeners.delete(callback)),
         },
       },
       scripting: {
         executeScript: vi.fn(async ({ func }: { func: { name: string } }) => {
           if (func.name === 'listAccountsFromPortal') return [{ result: { status: 200, body: options.portalAccounts ?? [] } }];
-          if (func.name === 'readPortalProfile') return [{ result: options.portalProfile }];
+          if (func.name === 'readPortalProfile') return [{ result: typeof options.portalProfile === 'function' ? options.portalProfile() : options.portalProfile }];
+          if (func.name === 'probePortalSession') return [{ result: { authenticated: options.portalAuthenticated === true } }];
           if (func.name === 'readAccessTokenForRequest') return [{ result: 'header.payload.signature' }];
           if (func.name === 'requestFromApiContext') return [{ result: apiResponse }];
           return [{ result: undefined }];
@@ -52,6 +65,7 @@ async function loadWorker(options: {
         session: {
           get: vi.fn(async (key: string) => ({ [key]: session[key] })),
           set: vi.fn(async (values: Record<string, unknown>) => { Object.assign(session, values); }),
+          remove: vi.fn(async (key: string) => { delete session[key]; }),
         },
         local: {
           get: vi.fn(async (key: string) => ({ [key]: local[key] })),
@@ -68,8 +82,13 @@ async function loadWorker(options: {
   return {
     downloadsDownload,
     job() { return session['bode.download-job']; },
+    sessionValue(key: string) { return session[key]; },
+    setSessionValue(key: string, value: unknown) { session[key] = value; },
     diagnostic() { return local['bode.last-diagnostic']; },
     fireQueue() { alarmListener?.({ name: 'bode.download-queue' }); },
+    firePortalUpdate(url = 'https://pa.equatorialenergia.com.br/siteantigo/sua-conta/') {
+      for (const callback of tabUpdatedListeners) callback(10, { status: 'complete' }, { url });
+    },
     send(message: unknown) {
       return new Promise<ExtensionResponse>((resolve) => {
         listener?.(message, {}, resolve);
@@ -193,5 +212,64 @@ describe('download da extensão', () => {
 
     await vi.waitFor(() => expect(worker.job()).toMatchObject({ complete: 2, failed: 0 }));
     await vi.waitFor(() => expect(worker.job()).toMatchObject({ status: 'COMPLETED' }));
+  });
+
+  it('não processa duas vezes o mesmo item durante uma rajada de alarmes', async () => {
+    const worker = await loadWorker({ alarmBurstsDuringDownload: 60 });
+    await worker.send({
+      type: 'bode.download-queue',
+      downloads: [{ account: '000123', invoiceNumber: 'FAT-1', competence: '2026/09' }],
+    });
+
+    await vi.waitFor(() => expect(worker.job()).toMatchObject({ status: 'COMPLETED', complete: 1, failed: 0 }));
+    expect(worker.downloadsDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it('interrompe os itens pendentes se o login mudar durante a fila', async () => {
+    let portalProfile: unknown = { holderName: 'Titular A', accounts: [{ id: '000123' }] };
+    const worker = await loadWorker({
+      portalProfile: () => portalProfile,
+      onDownload: () => { portalProfile = { holderName: 'Titular B', accounts: [{ id: '000999' }] }; },
+    });
+    await worker.send({
+      type: 'bode.download-queue',
+      downloads: [
+        { account: '000123', invoiceNumber: 'FAT-1', competence: '2026/09' },
+        { account: '000123', invoiceNumber: 'FAT-2', competence: '2026/08' },
+      ],
+    });
+
+    await vi.waitFor(() => expect(worker.job()).toMatchObject({ status: 'COMPLETED', complete: 1, failed: 1 }));
+    expect(worker.downloadsDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it('descarta o cache visual ao concluir uma navegação com outro login', async () => {
+    const worker = await loadWorker({
+      portalAuthenticated: true,
+      portalProfile: { holderName: 'Peter Xavier Hager', accounts: [{ id: '000105760442' }], loginRevision: 'login-peter' },
+    });
+    worker.setSessionValue('bode.popup-state', {
+      accounts: [{ id: '003001580611' }], profileKey: 'andre|003001580611|login-andre',
+    });
+
+    worker.firePortalUpdate();
+    await vi.waitFor(() => expect(worker.sessionValue('bode.popup-state')).toBeUndefined());
+  });
+
+  it('nunca repete item já iniciado após reiniciar o service worker', async () => {
+    const worker = await loadWorker({
+      initialJob: {
+        id: 'job-interrompido', status: 'RUNNING', portalTabId: 10, total: 2, complete: 0, failed: 0,
+        items: [
+          { account: '000123', invoiceNumber: 'FAT-1', competence: '2026/09', status: 'DOWNLOADING' },
+          { account: '000123', invoiceNumber: 'FAT-2', competence: '2026/08', status: 'PENDING' },
+        ],
+      },
+    });
+
+    worker.fireQueue();
+    await vi.waitFor(() => expect(worker.job()).toMatchObject({ status: 'COMPLETED', complete: 1, failed: 1 }));
+    expect(worker.downloadsDownload).toHaveBeenCalledTimes(1);
+    expect(worker.downloadsDownload).toHaveBeenCalledWith(expect.objectContaining({ filename: expect.stringContaining('2026-08.pdf') }));
   });
 });

@@ -34,9 +34,13 @@
       </section>
       <section id="download-progress" class="download-progress" aria-live="polite" hidden>
         <span id="download-complete-icon" class="download-complete-icon" aria-hidden="true">✓</span>
-        <div class="download-progress-heading"><strong id="download-progress-label">Baixando faturas</strong><span id="download-progress-count">0/0</span></div>
+        <div class="download-progress-heading">
+          <strong id="download-progress-label">Baixando faturas</strong>
+          <span class="download-progress-actions"><span id="download-progress-count">0/0</span><button id="download-queue-toggle" class="queue-toggle" type="button" aria-expanded="true">Minimizar</button></span>
+        </div>
         <progress id="download-progress-bar" value="0" max="1"></progress>
         <ul id="download-queue-items" class="download-queue-items" aria-label="Situação das faturas"></ul>
+        <p id="download-queue-note" class="download-queue-note">A fila continua se você fechar o popup.</p>
       </section>
       <p id="message" class="message" role="status"></p>
       <img class="mascot" src="../../assets/bode-mascot.png" alt="" />

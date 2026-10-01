@@ -16,14 +16,18 @@ const downloadProgressLabel = document.querySelector('#download-progress-label')
 const downloadProgressCount = document.querySelector('#download-progress-count');
 const downloadProgressBar = document.querySelector('#download-progress-bar');
 const downloadQueueItems = document.querySelector('#download-queue-items');
+const downloadQueueToggle = document.querySelector('#download-queue-toggle');
 const message = document.querySelector('#message');
 const popupStateStorageKey = 'bode.popup-state';
 const downloadJobStorageKey = 'bode.download-job';
+const downloadQueueMinimizedStorageKey = 'bode.download-queue-minimized';
 let invoicesByAccount = new Map();
 let accountsById = new Map();
 let downloadJob;
+let downloadQueueMinimized = false;
+let activeProfileKey;
 
-loadAccounts.addEventListener('click', () => void refreshAccounts());
+loadAccounts.addEventListener('click', () => void refreshAccounts(true));
 openPortal.addEventListener('click', () => void request('bode.open-portal'));
 accounts.addEventListener('change', () => void refreshInvoices());
 accountSearch.addEventListener('input', filterAccounts);
@@ -38,18 +42,27 @@ selectAllInvoices.addEventListener('click', () => {
   void persistPopupState();
 });
 download.addEventListener('click', () => void downloadSelected());
+downloadQueueToggle.addEventListener('click', () => void toggleDownloadQueue());
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'session' && changes[downloadJobStorageKey]) renderDownloadJob(changes[downloadJobStorageKey].newValue);
+  if (area === 'session' && changes[popupStateStorageKey]?.newValue === undefined) void refreshStatus();
 });
-void refreshStatus();
+void initializePopup();
+
+async function initializePopup() {
+  const stored = await chrome.storage.session.get(downloadQueueMinimizedStorageKey);
+  downloadQueueMinimized = stored[downloadQueueMinimizedStorageKey] === true;
+  await refreshStatus();
+}
 
 async function refreshStatus() {
   try {
     const result = await request('bode.status');
     if (result.authenticated) {
+      activeProfileKey = result.profileKey;
       status.textContent = '● Sessão conectada'; status.className = 'status connected'; loadAccounts.disabled = false;
       openPortal.hidden = true;
-      if (!(await restorePopupState())) void refreshAccounts();
+      if (!(await restorePopupState(result.profileKey))) void refreshAccounts();
       renderDownloadJob(await request('bode.download-status'));
       return;
     }
@@ -61,9 +74,10 @@ async function refreshStatus() {
   }
 }
 
-async function refreshAccounts() {
+async function refreshAccounts(refreshProfile = false) {
   setBusy(loadAccounts, true); clearMessage();
   try {
+    if (refreshProfile) activeProfileKey = (await request('bode.status')).profileKey;
     const availableAccounts = await request('bode.accounts');
     renderAccounts(availableAccounts);
     invoices.replaceChildren(); invoicesByAccount = new Map();
@@ -115,7 +129,7 @@ async function downloadSelected() {
 function renderAccounts(availableAccounts, selectedAccounts = new Set()) {
   accounts.replaceChildren(); accountsById = new Map(); accountSearch.value = '';
   for (const item of availableAccounts) {
-    const place = [item.address, item.city].filter(Boolean).join(' — ');
+    const place = formatAccountPlace(item.address, item.city);
     const accountDescription = item.consumerUnitNumber ? `UC ${item.consumerUnitNumber} — Conta ${item.id}` : `Conta ${item.id}`;
     const description = [item.holderName, accountDescription, place].filter(Boolean).join(' — ');
     const label = document.createElement('label'); label.className = 'choice';
@@ -123,6 +137,16 @@ function renderAccounts(availableAccounts, selectedAccounts = new Set()) {
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = item.id; checkbox.checked = selectedAccounts.has(item.id);
     label.append(checkbox, document.createTextNode(description)); accounts.append(label); accountsById.set(item.id, item);
   }
+}
+
+function formatAccountPlace(address, city) {
+  const meaningfulText = (value) => {
+    const text = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+    // O portal às vezes devolve apenas "A" como endereço. Sem rua, número ou
+    // bairro, isso não identifica a unidade e só polui o rótulo.
+    return text.length > 1 ? text : undefined;
+  };
+  return [meaningfulText(address), meaningfulText(city)].filter(Boolean).join(' — ');
 }
 
 function renderInvoices(results, selectedAccounts, selectedCompetences = new Set()) {
@@ -138,10 +162,12 @@ function renderInvoices(results, selectedAccounts, selectedCompetences = new Set
   return competences;
 }
 
-async function restorePopupState() {
+async function restorePopupState(profileKey) {
   const stored = await chrome.storage.session.get(popupStateStorageKey);
   const saved = stored[popupStateStorageKey];
-  if (!saved?.accounts?.length) return false;
+  // As unidades e faturas em memória pertencem ao login que as consultou.
+  // Ao trocar de titular, ignoramos esse cache e recarregamos os dados atuais.
+  if (!profileKey || !saved?.accounts?.length || saved.profileKey !== profileKey) return false;
   renderAccounts(saved.accounts, new Set(saved.selectedAccounts));
   invoicesByAccount = new Map(saved.invoicesByAccount || []);
   renderInvoices([...invoicesByAccount], saved.selectedAccounts || [], new Set(saved.selectedCompetences));
@@ -154,6 +180,7 @@ async function persistPopupState() {
     [popupStateStorageKey]: {
       accounts: [...accountsById.values()], selectedAccounts: checkedValues(accounts),
       invoicesByAccount: [...invoicesByAccount], selectedCompetences: checkedValues(invoices),
+      profileKey: activeProfileKey,
     },
   });
 }
@@ -164,12 +191,13 @@ function renderDownloadJob(job) {
   const processed = job.complete + job.failed;
   const isComplete = job.status !== 'RUNNING' && !job.failed;
   downloadProgress.classList.toggle('is-complete', isComplete);
+  setDownloadQueueMinimized(job.status === 'RUNNING' && downloadQueueMinimized);
   if (job.status === 'RUNNING') updateDownloadProgress(processed, job.total);
   else downloadProgress.hidden = false;
   renderDownloadQueueItems(job.items);
   if (job.status === 'RUNNING') {
     downloadProgressLabel.textContent = `Baixando faturas (${job.items.find((item) => item.status === 'DOWNLOADING')?.competence || 'aguardando'})`;
-    showMessage(`${processed}/${job.total} faturas processadas. A fila continua mesmo se você fechar o popup.`, 'success');
+    clearMessage();
   } else {
     const unavailableMessage = job.unavailable ? ` ${job.unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
     const failureMessage = job.failed ? ` ${job.failed} falharam.` : '';
@@ -178,6 +206,18 @@ function renderDownloadJob(job) {
     showMessage(`${downloadedMessage}${unavailableMessage}${failureMessage}`, job.failed ? 'error' : 'success');
   }
   updateButtons();
+}
+
+function setDownloadQueueMinimized(minimized) {
+  downloadProgress.classList.toggle('is-minimized', minimized);
+  downloadQueueToggle.textContent = minimized ? 'Expandir' : 'Minimizar';
+  downloadQueueToggle.setAttribute('aria-expanded', String(!minimized));
+}
+
+async function toggleDownloadQueue() {
+  downloadQueueMinimized = !downloadQueueMinimized;
+  setDownloadQueueMinimized(downloadQueueMinimized);
+  await chrome.storage.session.set({ [downloadQueueMinimizedStorageKey]: downloadQueueMinimized });
 }
 
 function renderDownloadQueueItems(items) {
