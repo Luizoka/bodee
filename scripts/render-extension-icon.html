@@ -16,8 +16,51 @@
       const image = new Image();
       image.src = '../extension/assets/bode-mascot.png';
       image.addEventListener('load', () => {
+        // The source artwork has a large transparent border. Find the actual
+        // artwork bounds first so the toolbar icon uses all available space.
+        const source = document.createElement('canvas');
+        source.width = image.naturalWidth;
+        source.height = image.naturalHeight;
+        const sourceContext = source.getContext('2d', { willReadFrequently: true });
+        sourceContext.drawImage(image, 0, 0);
+
+        const pixels = sourceContext.getImageData(0, 0, source.width, source.height).data;
+        let left = source.width;
+        let top = source.height;
+        let right = -1;
+        let bottom = -1;
+
+        for (let y = 0; y < source.height; y += 1) {
+          for (let x = 0; x < source.width; x += 1) {
+            if (pixels[(y * source.width + x) * 4 + 3] > 8) {
+              left = Math.min(left, x);
+              top = Math.min(top, y);
+              right = Math.max(right, x);
+              bottom = Math.max(bottom, y);
+            }
+          }
+        }
+
         const padding = Math.round(size * 0.04);
-        canvas.getContext('2d').drawImage(image, padding, padding, size - padding * 2, size - padding * 2);
+        const available = size - padding * 2;
+        const artworkWidth = right - left + 1;
+        const artworkHeight = bottom - top + 1;
+        const scale = Math.min(available / artworkWidth, available / artworkHeight);
+        const width = artworkWidth * scale;
+        const height = artworkHeight * scale;
+
+        canvas.getContext('2d').drawImage(
+          image,
+          left,
+          top,
+          artworkWidth,
+          artworkHeight,
+          (size - width) / 2,
+          (size - height) / 2,
+          width,
+          height,
+        );
+        document.documentElement.dataset.rendered = 'true';
       });
     </script>
   </body>
