@@ -233,7 +233,6 @@ function renderDownloadJob(job) {
 function setDownloadQueueMinimized(minimized) {
   downloadProgress.classList.toggle('is-minimized', minimized);
   const action = minimized ? 'Expandir' : 'Minimizar';
-  downloadQueueToggle.textContent = minimized ? '^' : 'v';
   downloadQueueToggle.setAttribute('aria-expanded', String(!minimized));
   downloadQueueToggle.setAttribute('aria-label', `${action} fila`);
   downloadQueueToggle.title = `${action} fila`;
@@ -248,7 +247,6 @@ async function toggleDownloadQueue() {
 function toggleSection(toggle, content, name) {
   const minimized = !content.hidden;
   content.hidden = minimized;
-  toggle.textContent = minimized ? '⌄' : '⌃';
   toggle.setAttribute('aria-expanded', String(!minimized));
   const action = minimized ? 'Expandir' : 'Minimizar';
   toggle.setAttribute('aria-label', `${action} ${name}`);
