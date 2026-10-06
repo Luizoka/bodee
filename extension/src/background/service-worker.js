@@ -1,6 +1,7 @@
 /* global chrome, URL, setTimeout, clearTimeout, console */
 import {
   API_ORIGIN,
+  EQUATORIAL_SITES,
   PORTAL_ORIGIN,
   isPdfBase64,
   installAuthenticationHolderCapture,
@@ -54,14 +55,22 @@ async function handleMessage(message) {
       return openPortal();
     case 'bode.accounts':
       return accounts((await activePortalTab()).id);
-    case 'bode.invoices':
-      return invoices((await activePortalTab()).id, requireText(message.account), message.openOnly === true);
-    case 'bode.download':
-      return download((await activePortalTab()).id, message.account, message.holderName, message.consumerUnitNumber, message.invoiceNumber, message.competence);
-    case 'bode.download-batch':
-      return downloadBatch((await activePortalTab()).id, message.downloads);
-    case 'bode.download-queue':
-      return startDownloadQueue((await activePortalTab()).id, message.downloads);
+    case 'bode.invoices': {
+      const portal = await activePortalTab();
+      return invoices(portal.id, requireText(message.account), message.openOnly === true, portal.apiOrigin);
+    }
+    case 'bode.download': {
+      const portal = await activePortalTab();
+      return download(portal.id, message.account, message.holderName, message.consumerUnitNumber, message.invoiceNumber, message.competence, portal.apiOrigin);
+    }
+    case 'bode.download-batch': {
+      const portal = await activePortalTab();
+      return downloadBatch(portal.id, message.downloads, portal.apiOrigin);
+    }
+    case 'bode.download-queue': {
+      const portal = await activePortalTab();
+      return startDownloadQueue(portal.id, message.downloads, portal.apiOrigin);
+    }
     case 'bode.download-status':
       return readDownloadJob();
     case 'bode.last-diagnostic':
@@ -71,7 +80,7 @@ async function handleMessage(message) {
   }
 }
 
-async function startDownloadQueue(portalTabId, downloads) {
+async function startDownloadQueue(portalTabId, downloads, apiOrigin = API_ORIGIN) {
   if (!Array.isArray(downloads) || downloads.length === 0 || downloads.length > 120) {
     throw new Error('Nenhuma fatura foi selecionada para download.');
   }
@@ -88,6 +97,7 @@ async function startDownloadQueue(portalTabId, downloads) {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       status: 'RUNNING',
       portalTabId,
+      apiOrigin,
       profileKey: await currentProfileKey(portalTabId),
       total: items.length,
       complete: 0,
@@ -173,6 +183,7 @@ async function processDownloadQueue() {
         item.consumerUnitNumber,
         item.invoiceNumber,
         item.competence,
+        job.apiOrigin ?? API_ORIGIN,
       );
       item.status = 'COMPLETED';
       item.filename = result.filename;
@@ -241,7 +252,8 @@ async function sessionStatusFromActiveTab() {
 
 async function activePortalTab(required = true) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab?.id || !tab.url?.startsWith(PORTAL_ORIGIN)) {
+  const site = siteForPortalUrl(tab?.url);
+  if (!tab?.id || !site) {
     if (!required) return undefined;
     throw new Error('Abra o portal da Equatorial e faça login antes de usar o BODEE.');
   }
@@ -249,7 +261,7 @@ async function activePortalTab(required = true) {
     if (!required) return undefined;
     throw new Error('Abra o portal antigo da Equatorial antes de usar o BODEE.');
   }
-  return tab;
+  return { ...tab, apiOrigin: site.apiOrigin };
 }
 
 async function openPortal() {
@@ -292,8 +304,16 @@ function isPortalPageUrl(value) {
   if (typeof value !== 'string') return false;
   try {
     const url = new URL(value);
-    return url.origin === PORTAL_ORIGIN && url.pathname.startsWith('/siteantigo');
+    return Boolean(siteForPortalUrl(url.toString())) && url.pathname.startsWith('/siteantigo');
   } catch { return false; }
+}
+
+function siteForPortalUrl(value) {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const origin = new URL(value).origin;
+    return EQUATORIAL_SITES.find((site) => site.portalOrigin === origin);
+  } catch { return undefined; }
 }
 
 async function invalidatePopupCacheForCurrentLogin(tabId) {
@@ -388,18 +408,18 @@ function formatDiagnostic(diagnostic) {
   return `(Diagnóstico BODEE: unidades; ${details || 'sem detalhes'}.)`;
 }
 
-async function invoices(tabId, account, openOnly = false) {
-  const url = new URL(`/api/v1/debitos/${encodeURIComponent(requireText(account))}`, API_ORIGIN);
+async function invoices(tabId, account, openOnly = false, apiOrigin = API_ORIGIN) {
+  const url = new URL(`/api/v1/debitos/${encodeURIComponent(requireText(account))}`, apiOrigin);
   url.searchParams.set('listarEmAberto', String(openOnly));
-  const result = await requestWithCurrentSession(tabId, url.toString());
+  const result = await requestWithCurrentSession(tabId, url.toString(), apiOrigin);
   assertEquatorialSuccess(result.status, 'Não foi possível consultar as faturas.');
   return parseInvoices(result.body);
 }
 
-async function download(tabId, account, holderName, consumerUnitNumber, invoiceNumber, competence) {
-  const url = new URL(`/api/v1/faturas/segunda-via/${encodeURIComponent(requireText(invoiceNumber))}`, API_ORIGIN);
+async function download(tabId, account, holderName, consumerUnitNumber, invoiceNumber, competence, apiOrigin = API_ORIGIN) {
+  const url = new URL(`/api/v1/faturas/segunda-via/${encodeURIComponent(requireText(invoiceNumber))}`, apiOrigin);
   url.searchParams.set('contaContrato', requireText(account));
-  const result = await requestWithCurrentSession(tabId, url.toString());
+  const result = await requestWithCurrentSession(tabId, url.toString(), apiOrigin);
   assertEquatorialSuccess(result.status, 'Não foi possível baixar a fatura.');
   const base64 = result.body?.data?.base64;
   if (!isPdfBase64(base64)) throw new Error('A Equatorial não retornou um PDF válido.');
@@ -413,7 +433,7 @@ async function download(tabId, account, holderName, consumerUnitNumber, invoiceN
   return { filename };
 }
 
-async function downloadBatch(tabId, downloads) {
+async function downloadBatch(tabId, downloads, apiOrigin = API_ORIGIN) {
   if (!Array.isArray(downloads) || downloads.length === 0 || downloads.length > 120) {
     throw new Error('Nenhuma fatura foi selecionada para download.');
   }
@@ -430,6 +450,7 @@ async function downloadBatch(tabId, downloads) {
         item?.consumerUnitNumber,
         item?.invoiceNumber,
         item?.competence,
+        apiOrigin,
       );
       complete += 1;
     } catch {
@@ -439,14 +460,14 @@ async function downloadBatch(tabId, downloads) {
   return { complete, failed };
 }
 
-async function requestWithCurrentSession(portalTabId, requestUrl) {
+async function requestWithCurrentSession(portalTabId, requestUrl, apiOrigin = API_ORIGIN) {
   let accessToken;
   let apiTabId;
   try {
     accessToken = await executeInPage(portalTabId, readAccessTokenForRequest);
     if (!accessToken) throw new Error('A sessão da Equatorial não está autenticada. Faça login novamente.');
 
-    const apiTab = await chrome.tabs.create({ url: API_ORIGIN, active: false });
+    const apiTab = await chrome.tabs.create({ url: apiOrigin, active: false });
     if (!apiTab.id) throw new Error('Não foi possível preparar o contexto da API.');
     apiTabId = apiTab.id;
     await waitForTabLoad(apiTabId);

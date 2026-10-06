@@ -16,6 +16,7 @@ async function loadWorker(options: {
   initialJob?: unknown;
   onDownload?: () => void;
   portalAuthenticated?: boolean;
+  activePortalUrl?: string;
   portalAccounts?: unknown[];
   portalProfile?: unknown | (() => unknown);
 } = {}) {
@@ -39,7 +40,7 @@ async function loadWorker(options: {
     chrome: {
       runtime: { onMessage: { addListener: (candidate: MessageListener) => { listener = candidate; } } },
       tabs: {
-        query: vi.fn(async () => [{ id: 10, url: 'https://pa.equatorialenergia.com.br/siteantigo/' }]),
+        query: vi.fn(async () => [{ id: 10, url: options.activePortalUrl ?? 'https://pa.equatorialenergia.com.br/siteantigo/' }]),
         create: vi.fn(async () => ({ id: 20 })),
         remove: vi.fn(async () => undefined),
         onUpdated: {
@@ -117,6 +118,18 @@ describe('download da extensão', () => {
     expect(worker.apiRequestUrls).toEqual([
       'https://api-pa-cliente.equatorialenergia.com.br/api/v1/debitos/000123?listarEmAberto=false',
       'https://api-pa-cliente.equatorialenergia.com.br/api/v1/debitos/000123?listarEmAberto=true',
+    ]);
+  });
+
+  it('usa a API correspondente ao estado do portal ativo', async () => {
+    const worker = await loadWorker({
+      activePortalUrl: 'https://ma.equatorialenergia.com.br/siteantigo/',
+      apiResponse: { status: 200, body: { data: { faturas: [] } } },
+    });
+
+    await expect(worker.send({ type: 'bode.invoices', account: '000123' })).resolves.toEqual({ ok: true, value: [] });
+    expect(worker.apiRequestUrls).toEqual([
+      'https://api-ma-cliente.equatorialenergia.com.br/api/v1/debitos/000123?listarEmAberto=false',
     ]);
   });
 

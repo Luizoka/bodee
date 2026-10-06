@@ -1,6 +1,13 @@
 /* global window, fetch, URL, atob, console, XMLHttpRequest */
-export const PORTAL_ORIGIN = 'https://pa.equatorialenergia.com.br';
-export const API_ORIGIN = 'https://api-pa-cliente.equatorialenergia.com.br';
+export const EQUATORIAL_SITES = Object.freeze([
+  { state: 'PA', portalOrigin: 'https://pa.equatorialenergia.com.br', apiOrigin: 'https://api-pa-cliente.equatorialenergia.com.br' },
+  { state: 'PI', portalOrigin: 'https://pi.equatorialenergia.com.br', apiOrigin: 'https://api-pi-cliente.equatorialenergia.com.br' },
+  { state: 'AL', portalOrigin: 'https://al.equatorialenergia.com.br', apiOrigin: 'https://api-al-cliente.equatorialenergia.com.br' },
+  { state: 'AP', portalOrigin: 'https://ap.equatorialenergia.com.br', apiOrigin: 'https://api-ap-cliente.equatorialenergia.com.br' },
+  { state: 'MA', portalOrigin: 'https://ma.equatorialenergia.com.br', apiOrigin: 'https://api-ma-cliente.equatorialenergia.com.br' },
+]);
+export const PORTAL_ORIGIN = EQUATORIAL_SITES[0].portalOrigin;
+export const API_ORIGIN = EQUATORIAL_SITES[0].apiOrigin;
 const holderNameStorageKey = 'bode.equatorial.holder-name';
 
 /**

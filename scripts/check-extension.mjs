@@ -7,6 +7,14 @@ const output = join(root, 'dist-extension');
 const expectedHosts = new Set([
   'https://pa.equatorialenergia.com.br',
   'https://api-pa-cliente.equatorialenergia.com.br',
+  'https://pi.equatorialenergia.com.br',
+  'https://api-pi-cliente.equatorialenergia.com.br',
+  'https://al.equatorialenergia.com.br',
+  'https://api-al-cliente.equatorialenergia.com.br',
+  'https://ap.equatorialenergia.com.br',
+  'https://api-ap-cliente.equatorialenergia.com.br',
+  'https://ma.equatorialenergia.com.br',
+  'https://api-ma-cliente.equatorialenergia.com.br',
 ]);
 const textExtensions = new Set(['.css', '.html', '.js', '.json']);
 

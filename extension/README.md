@@ -10,12 +10,12 @@ consulte [`docs/chrome-extension.md`](../docs/chrome-extension.md).
 1. Abra `chrome://extensions` (ou `edge://extensions`).
 2. Ative **Modo do desenvolvedor**.
 3. Clique em **Carregar sem compactação** e selecione `dist-extension/`, após executar `pnpm build:extension`.
-4. Abra `https://pa.equatorialenergia.com.br/siteantigo/` e faça login normalmente.
+4. Abra o portal antigo da Equatorial de PA, PI, AL, AP ou MA e faça login normalmente.
 5. Abra o popup BODEE, atualize as unidades, marque uma ou mais unidades e as competências desejadas. O BODEE baixa cada combinação disponível de unidade e competência selecionadas.
 
 ## Segurança e escopo
 
-- As permissões de host são limitadas ao portal e à API da Equatorial no Pará.
+- As permissões de host são limitadas aos portais e APIs da Equatorial em PA, PI, AL, AP e MA.
 - A extensão não coleta senha, não automatiza login e não tenta contornar CAPTCHA, Imperva ou Transmit Security.
 - O token é lido somente durante uma solicitação. Não é gravado em storage, exibido, registrado ou enviado a serviços externos.
 - Para cada chamada à API, uma aba técnica em segundo plano é aberta na origem da API e fechada ao terminar. Ela preserva o contexto real do navegador para a validação da POC.

@@ -49,6 +49,14 @@ export const privacyPageHtml = `<!doctype html>
         <ul>
           <li><a href="https://pa.equatorialenergia.com.br">https://pa.equatorialenergia.com.br</a></li>
           <li><a href="https://api-pa-cliente.equatorialenergia.com.br">https://api-pa-cliente.equatorialenergia.com.br</a></li>
+          <li><a href="https://pi.equatorialenergia.com.br">https://pi.equatorialenergia.com.br</a></li>
+          <li><a href="https://api-pi-cliente.equatorialenergia.com.br">https://api-pi-cliente.equatorialenergia.com.br</a></li>
+          <li><a href="https://al.equatorialenergia.com.br">https://al.equatorialenergia.com.br</a></li>
+          <li><a href="https://api-al-cliente.equatorialenergia.com.br">https://api-al-cliente.equatorialenergia.com.br</a></li>
+          <li><a href="https://ap.equatorialenergia.com.br">https://ap.equatorialenergia.com.br</a></li>
+          <li><a href="https://api-ap-cliente.equatorialenergia.com.br">https://api-ap-cliente.equatorialenergia.com.br</a></li>
+          <li><a href="https://ma.equatorialenergia.com.br">https://ma.equatorialenergia.com.br</a></li>
+          <li><a href="https://api-ma-cliente.equatorialenergia.com.br">https://api-ma-cliente.equatorialenergia.com.br</a></li>
         </ul>
         <p>O BODEE não transmite dados a servidores próprios nem compartilha dados com terceiros para publicidade, análise, perfilamento ou venda.</p>
       </section>

@@ -3,7 +3,7 @@
   "name": "BODEE — Faturas Equatorial",
   "short_name": "BODEE",
   "description": "Facilita a consulta e o download de faturas no portal da Equatorial Energia.",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -27,6 +27,14 @@
   "permissions": ["scripting", "downloads", "storage", "alarms"],
   "host_permissions": [
     "https://pa.equatorialenergia.com.br/*",
-    "https://api-pa-cliente.equatorialenergia.com.br/*"
+    "https://api-pa-cliente.equatorialenergia.com.br/*",
+    "https://pi.equatorialenergia.com.br/*",
+    "https://api-pi-cliente.equatorialenergia.com.br/*",
+    "https://al.equatorialenergia.com.br/*",
+    "https://api-al-cliente.equatorialenergia.com.br/*",
+    "https://ap.equatorialenergia.com.br/*",
+    "https://api-ap-cliente.equatorialenergia.com.br/*",
+    "https://ma.equatorialenergia.com.br/*",
+    "https://api-ma-cliente.equatorialenergia.com.br/*"
   ]
 }

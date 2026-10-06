@@ -117,11 +117,19 @@ describe('manifesto da extensão', () => {
   it('usa Manifest V3, ícones oficiais e hosts restritos', async () => {
     const manifest = parseManifest(await readFile(join(process.cwd(), 'extension', 'manifest.json'), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.0.7');
+    expect(manifest.version).toBe('1.0.8');
     expect(manifest.permissions).toEqual(['scripting', 'downloads', 'storage', 'alarms']);
     expect(manifest.host_permissions).toEqual([
       'https://pa.equatorialenergia.com.br/*',
       'https://api-pa-cliente.equatorialenergia.com.br/*',
+      'https://pi.equatorialenergia.com.br/*',
+      'https://api-pi-cliente.equatorialenergia.com.br/*',
+      'https://al.equatorialenergia.com.br/*',
+      'https://api-al-cliente.equatorialenergia.com.br/*',
+      'https://ap.equatorialenergia.com.br/*',
+      'https://api-ap-cliente.equatorialenergia.com.br/*',
+      'https://ma.equatorialenergia.com.br/*',
+      'https://api-ma-cliente.equatorialenergia.com.br/*',
     ]);
     expect(manifest.icons).toEqual({
       '16': 'icons/icon16.png',
