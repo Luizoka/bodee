@@ -32,7 +32,14 @@
         <div class="selection-section">
           <div class="section-heading">
             <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" /></svg><span>Competências</span><span id="selected-invoices-count" class="selected-count"></span></label>
-            <span class="section-actions"><button id="select-all-invoices" type="button" class="text-button">Todas</button><button id="invoices-toggle" class="section-toggle" type="button" aria-controls="invoices-content" aria-expanded="true" aria-label="Minimizar competências" title="Minimizar competências">⌃</button></span>
+            <span class="section-actions">
+              <button id="select-all-invoices" type="button" class="text-button">Todas</button>
+              <label class="open-invoices-filter" for="open-invoices-only" title="Somente em aberto">
+                <input id="open-invoices-only" type="checkbox" role="switch" aria-label="Somente em aberto" />
+                <svg class="filter-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6.5 7.2V18l-3 1.5v-7.3z" /></svg>
+              </label>
+              <button id="invoices-toggle" class="section-toggle" type="button" aria-controls="invoices-content" aria-expanded="true" aria-label="Minimizar competências" title="Minimizar competências">⌃</button>
+            </span>
           </div>
           <div id="invoices-content" class="selection-content">
             <div id="invoices" class="invoices"></div>

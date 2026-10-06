@@ -34,6 +34,13 @@ button.text-button { width: auto; min-height: auto; margin: 0; color: #2563eb; b
 .choice[hidden] { display: none; }
 .choice:last-child, .invoice:last-child { border-bottom: 0; }
 .choice input, .invoice input { accent-color: #2563eb; }
+.open-invoices-filter { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin: 0; border-radius: 5px; color: #94a3b8; cursor: pointer; transition: color .15s ease, background .15s ease; }
+.open-invoices-filter:hover { color: #475569; background: #e2e8f0; }
+.open-invoices-filter input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.filter-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.open-invoices-filter:has(input:checked) { color: #2563eb; background: #dbeafe; }
+.open-invoices-filter:has(input:focus-visible) { outline: 2px solid #93c5fd; outline-offset: 1px; }
+.open-invoices-filter:has(input:disabled) { opacity: .45; cursor: wait; }
 .download-progress { margin-top: 12px; padding: 9px 10px; border: 1px solid #bfdbfe; border-radius: 7px; background: #eff6ff; color: #1e3a5f; font-size: 12px; }
 .download-progress-heading, .download-progress-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .download-progress-heading { min-width: 0; }

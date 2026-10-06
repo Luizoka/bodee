@@ -33,6 +33,7 @@ async function loadWorker(options: {
     return 1;
   });
   const apiResponse = options.apiResponse ?? { status: 200, body: { data: { base64: validPdf } } };
+  const apiRequestUrls: string[] = [];
 
   Object.assign(globalThis, {
     chrome: {
@@ -50,12 +51,15 @@ async function loadWorker(options: {
         },
       },
       scripting: {
-        executeScript: vi.fn(async ({ func }: { func: { name: string } }) => {
+        executeScript: vi.fn(async ({ func, args }: { func: { name: string }; args?: unknown[] }) => {
           if (func.name === 'listAccountsFromPortal') return [{ result: { status: 200, body: options.portalAccounts ?? [] } }];
           if (func.name === 'readPortalProfile') return [{ result: typeof options.portalProfile === 'function' ? options.portalProfile() : options.portalProfile }];
           if (func.name === 'probePortalSession') return [{ result: { authenticated: options.portalAuthenticated === true } }];
           if (func.name === 'readAccessTokenForRequest') return [{ result: 'header.payload.signature' }];
-          if (func.name === 'requestFromApiContext') return [{ result: apiResponse }];
+          if (func.name === 'requestFromApiContext') {
+            if (typeof args?.[1] === 'string') apiRequestUrls.push(args[1]);
+            return [{ result: apiResponse }];
+          }
           return [{ result: undefined }];
         }),
       },
@@ -81,6 +85,7 @@ async function loadWorker(options: {
 
   return {
     downloadsDownload,
+    apiRequestUrls,
     job() { return session['bode.download-job']; },
     sessionValue(key: string) { return session[key]; },
     setSessionValue(key: string, value: unknown) { session[key] = value; },
@@ -103,6 +108,18 @@ afterEach(() => {
 });
 
 describe('download da extensão', () => {
+  it('consulta o histórico ou somente faturas em aberto conforme o filtro', async () => {
+    const worker = await loadWorker({ apiResponse: { status: 200, body: { data: { faturas: [] } } } });
+
+    await expect(worker.send({ type: 'bode.invoices', account: '000123' })).resolves.toEqual({ ok: true, value: [] });
+    await expect(worker.send({ type: 'bode.invoices', account: '000123', openOnly: true })).resolves.toEqual({ ok: true, value: [] });
+
+    expect(worker.apiRequestUrls).toEqual([
+      'https://api-pa-cliente.equatorialenergia.com.br/api/v1/debitos/000123?listarEmAberto=false',
+      'https://api-pa-cliente.equatorialenergia.com.br/api/v1/debitos/000123?listarEmAberto=true',
+    ]);
+  });
+
   it('associa a UC mascarada e o titular do perfil à conta-contrato correta', async () => {
     const worker = await loadWorker({
       portalAccounts: [{ numero: '003013204461', numeroInstalacao: '2000613418' }],

@@ -6,6 +6,7 @@ const invoiceSection = document.querySelector('#invoices-section');
 const accounts = document.querySelector('#accounts');
 const accountSearch = document.querySelector('#account-search');
 const invoices = document.querySelector('#invoices');
+const openInvoicesOnly = document.querySelector('#open-invoices-only');
 const selectAllAccounts = document.querySelector('#select-all-accounts');
 const selectAllInvoices = document.querySelector('#select-all-invoices');
 const accountsContent = document.querySelector('#accounts-content');
@@ -37,6 +38,7 @@ openPortal.addEventListener('click', () => void request('bode.open-portal'));
 accounts.addEventListener('change', () => void refreshInvoices());
 accountSearch.addEventListener('input', filterAccounts);
 invoices.addEventListener('change', () => { updateDownloadButton(); void persistPopupState(); });
+openInvoicesOnly.addEventListener('change', () => void refreshInvoices());
 selectAllAccounts.addEventListener('click', () => {
   toggleAll(accounts);
   void refreshInvoices();
@@ -96,16 +98,26 @@ async function refreshAccounts(refreshProfile = false) {
 
 async function refreshInvoices() {
   const selectedAccounts = checkedValues(accounts);
+  const openOnly = openInvoicesOnly.checked;
   invoices.replaceChildren(); invoicesByAccount = new Map(); clearMessage();
   if (!selectedAccounts.length) { updateButtons(); await persistPopupState(); return; }
 
   try {
-    const results = await Promise.all(selectedAccounts.map(async (account) => [account, await request('bode.invoices', { account })]));
-    if (selectedAccounts.join() !== checkedValues(accounts).join()) return;
+    openInvoicesOnly.disabled = true;
+    const results = await Promise.all(selectedAccounts.map(async (account) => [
+      account,
+      await request('bode.invoices', { account, openOnly }),
+    ]));
+    if (selectedAccounts.join() !== checkedValues(accounts).join() || openOnly !== openInvoicesOnly.checked) return;
     invoicesByAccount = new Map(results); const competences = renderInvoices(results, selectedAccounts);
-    if (!competences.length) showMessage('Nenhuma fatura disponível para as unidades selecionadas.', 'error');
+    if (!competences.length) showMessage(
+      openOnly
+        ? 'Nenhuma fatura em aberto para as unidades selecionadas.'
+        : 'Nenhuma fatura disponível para as unidades selecionadas.',
+      'error',
+    );
   } catch (error) { showMessage(error.message, 'error'); }
-  finally { updateButtons(); await persistPopupState(); }
+  finally { openInvoicesOnly.disabled = false; updateButtons(); await persistPopupState(); }
 }
 
 async function downloadSelected() {
@@ -176,6 +188,7 @@ async function restorePopupState(profileKey) {
   // Ao trocar de titular, ignoramos esse cache e recarregamos os dados atuais.
   if (!profileKey || !saved?.accounts?.length || saved.profileKey !== profileKey) return false;
   renderAccounts(saved.accounts, new Set(saved.selectedAccounts));
+  openInvoicesOnly.checked = saved.openOnly === true;
   invoicesByAccount = new Map(saved.invoicesByAccount || []);
   renderInvoices([...invoicesByAccount], saved.selectedAccounts || [], new Set(saved.selectedCompetences));
   invoiceSection.hidden = false; updateButtons();
@@ -187,6 +200,7 @@ async function persistPopupState() {
     [popupStateStorageKey]: {
       accounts: [...accountsById.values()], selectedAccounts: checkedValues(accounts),
       invoicesByAccount: [...invoicesByAccount], selectedCompetences: checkedValues(invoices),
+      openOnly: openInvoicesOnly.checked,
       profileKey: activeProfileKey,
     },
   });

@@ -55,7 +55,7 @@ async function handleMessage(message) {
     case 'bode.accounts':
       return accounts((await activePortalTab()).id);
     case 'bode.invoices':
-      return invoices((await activePortalTab()).id, requireText(message.account));
+      return invoices((await activePortalTab()).id, requireText(message.account), message.openOnly === true);
     case 'bode.download':
       return download((await activePortalTab()).id, message.account, message.holderName, message.consumerUnitNumber, message.invoiceNumber, message.competence);
     case 'bode.download-batch':
@@ -388,9 +388,9 @@ function formatDiagnostic(diagnostic) {
   return `(Diagnóstico BODEE: unidades; ${details || 'sem detalhes'}.)`;
 }
 
-async function invoices(tabId, account) {
+async function invoices(tabId, account, openOnly = false) {
   const url = new URL(`/api/v1/debitos/${encodeURIComponent(requireText(account))}`, API_ORIGIN);
-  url.searchParams.set('listarEmAberto', 'false');
+  url.searchParams.set('listarEmAberto', String(openOnly));
   const result = await requestWithCurrentSession(tabId, url.toString());
   assertEquatorialSuccess(result.status, 'Não foi possível consultar as faturas.');
   return parseInvoices(result.body);
