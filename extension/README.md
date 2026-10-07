@@ -13,6 +13,19 @@ consulte [`docs/chrome-extension.md`](../docs/chrome-extension.md).
 4. Abra o portal antigo da Equatorial de PA, PI, AL, AP ou MA e faça login normalmente.
 5. Abra o popup BODEE, atualize as unidades, marque uma ou mais unidades e as competências desejadas. O BODEE baixa cada combinação disponível de unidade e competência selecionadas.
 
+## Modo de teste local
+
+Para abrir o próprio popup com unidades, competências e fila simuladas — sem sessão,
+portal, chamadas à Equatorial ou downloads reais — gere a extensão de desenvolvimento:
+
+```bash
+npm run build:extension:mock
+```
+
+Carregue `dist-extension/` normalmente em `chrome://extensions`. O build normal
+(`npm run build:extension`) não inclui os arquivos de mock e é o único apropriado
+para distribuição.
+
 ## Segurança e escopo
 
 - As permissões de host são limitadas aos portais e APIs da Equatorial em PA, PI, AL, AP e MA.

@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:extension": "node scripts/build-extension.mjs",
+    "build:extension:mock": "node scripts/build-extension.mjs --mock",
     "check:extension": "node scripts/check-extension.mjs",
     "package:extension": "node scripts/package-extension.mjs",
     "format": "prettier --write .",

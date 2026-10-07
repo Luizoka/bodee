@@ -1,4 +1,6 @@
 /* global chrome, document */
+const MOCK_MODE = globalThis.__BODEE_MOCK_MODE__ === true;
+let mockRequest;
 const status = document.querySelector('#session-status');
 const openPortal = document.querySelector('#open-portal');
 const loadAccounts = document.querySelector('#load-accounts');
@@ -52,16 +54,36 @@ accountsToggle.addEventListener('click', () => toggleSection(accountsToggle, acc
 invoicesToggle.addEventListener('click', () => toggleSection(invoicesToggle, invoicesContent, 'competências'));
 download.addEventListener('click', () => void downloadSelected());
 downloadQueueToggle.addEventListener('click', () => void toggleDownloadQueue());
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'session' && changes[downloadJobStorageKey]) renderDownloadJob(changes[downloadJobStorageKey].newValue);
-  if (area === 'session' && changes[popupStateStorageKey]?.newValue === undefined) void refreshStatus();
-});
+if (!MOCK_MODE) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'session' && changes[downloadJobStorageKey]) renderDownloadJob(changes[downloadJobStorageKey].newValue);
+    if (area === 'session' && changes[popupStateStorageKey]?.newValue === undefined) void refreshStatus();
+  });
+}
 void initializePopup();
 
 async function initializePopup() {
+  if (MOCK_MODE) {
+    ({ mockRequest } = await import('./popup-mock.js'));
+    await initializeMockPopup();
+    return;
+  }
   const stored = await chrome.storage.session.get(downloadQueueMinimizedStorageKey);
   downloadQueueMinimized = stored[downloadQueueMinimizedStorageKey] === true;
   await refreshStatus();
+}
+
+async function initializeMockPopup() {
+  const mockStatus = await request('bode.status');
+  activeProfileKey = mockStatus.profileKey;
+  status.textContent = '● Modo de teste local'; status.className = 'status connected'; loadAccounts.disabled = false;
+  renderAccounts(await request('bode.accounts'), new Set(['452643701343']));
+  invoiceSection.hidden = false;
+  await refreshInvoices();
+  for (const checkbox of [...invoices.querySelectorAll('input')].slice(0, 3)) checkbox.checked = true;
+  updateButtons();
+  renderDownloadJob(await request('bode.download-status'));
+  showMessage('Dados simulados localmente: nenhuma chamada à Equatorial será feita.', 'success');
 }
 
 async function refreshStatus() {
@@ -196,6 +218,7 @@ async function restorePopupState(profileKey) {
 }
 
 async function persistPopupState() {
+  if (MOCK_MODE) return;
   await chrome.storage.session.set({
     [popupStateStorageKey]: {
       accounts: [...accountsById.values()], selectedAccounts: checkedValues(accounts),
@@ -241,6 +264,7 @@ function setDownloadQueueMinimized(minimized) {
 async function toggleDownloadQueue() {
   downloadQueueMinimized = !downloadQueueMinimized;
   setDownloadQueueMinimized(downloadQueueMinimized);
+  if (MOCK_MODE) return;
   await chrome.storage.session.set({ [downloadQueueMinimizedStorageKey]: downloadQueueMinimized });
 }
 
@@ -254,7 +278,7 @@ function toggleSection(toggle, content, name) {
 }
 
 function renderDownloadQueueItems(items) {
-  const statusLabels = { PENDING: 'Na fila', DOWNLOADING: 'Baixando', COMPLETED: 'Baixada', FAILED: 'Falhou' };
+  const statusLabels = { PENDING: 'Na fila', DOWNLOADING: 'Baixando', COMPLETED: 'Baixada', FAILED: 'Erro' };
   downloadQueueItems.replaceChildren();
   for (const item of items) {
     const label = [item.consumerUnitNumber ? `UC ${item.consumerUnitNumber}` : `Conta ${item.account}`, item.competence].join(' — ');
@@ -294,7 +318,12 @@ function updateToggleLabel(button, container) {
   button.textContent = checkboxes.length && [...checkboxes].every((checkbox) => checkbox.checked) ? 'Nenhuma' : 'Todas';
 }
 function updateDownloadButton() { download.disabled = downloadJob?.status === 'RUNNING' || !checkedValues(accounts).length || !checkedValues(invoices).length; }
-async function request(type, payload = {}) { const response = await chrome.runtime.sendMessage({ type, ...payload }); if (!response?.ok) throw new Error(response?.error || 'Falha inesperada.'); return response.value; }
+async function request(type, payload = {}) {
+  if (MOCK_MODE) return mockRequest(type, payload);
+  const response = await chrome.runtime.sendMessage({ type, ...payload });
+  if (!response?.ok) throw new Error(response?.error || 'Falha inesperada.');
+  return response.value;
+}
 function updateDownloadProgress(current, total) {
   downloadProgress.hidden = false;
   downloadProgress.classList.remove('is-complete');

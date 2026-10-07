@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const source = join(root, 'extension');
 const output = join(root, 'dist-extension');
+const mockMode = process.argv.includes('--mock') || process.env.BODEE_MOCK_MODE === 'true';
 const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));
 
 const packageJson = await readJson(join(root, 'package.json'));
@@ -40,7 +41,17 @@ await cp(join(source, 'src', 'equatorial', 'client.js'), join(output, 'services'
 
 const popupPath = join(output, 'popup', 'popup.html');
 const popup = await readFile(popupPath, 'utf8');
-await writeFile(popupPath, popup.replaceAll('../../assets/', '../assets/'));
+await writeFile(
+  popupPath,
+  popup
+    .replaceAll('../../assets/', '../assets/')
+    .replace('<!-- MOCK_CONFIG -->', mockMode ? '<script src="mock-config.js"></script>' : ''),
+);
+if (mockMode) {
+  await writeFile(join(output, 'popup', 'mock-config.js'), 'globalThis.__BODEE_MOCK_MODE__ = true;\n');
+} else {
+  await rm(join(output, 'popup', 'popup-mock.js'), { force: true });
+}
 
 execFileSync(process.execPath, [join(root, 'scripts', 'check-extension.mjs')], { stdio: 'inherit' });
-console.log(`Extensão criada em ${output}`);
+console.log(`Extensão ${mockMode ? 'de teste local ' : ''}criada em ${output}`);
