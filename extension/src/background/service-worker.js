@@ -21,6 +21,7 @@ const downloadQueueAlarm = 'bode.download-queue';
 const lastDiagnosticStorageKey = 'bode.last-diagnostic';
 let downloadQueueProcessor;
 let isStartingDownloadQueue = false;
+const cancelledDownloadJobs = new Set();
 
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -73,6 +74,8 @@ async function handleMessage(message) {
     }
     case 'bode.download-status':
       return readDownloadJob();
+    case 'bode.download-cancel':
+      return cancelDownloadQueue();
     case 'bode.last-diagnostic':
       return readLastDiagnostic();
     default:
@@ -143,6 +146,11 @@ async function processDownloadQueue() {
     const job = await readDownloadJob();
     if (!job || job.status !== 'RUNNING') return;
 
+    if (cancelledDownloadJobs.has(job.id)) {
+      await finishDownloadQueueCancellation(job);
+      return;
+    }
+
     if (!(await downloadJobMatchesCurrentProfile(job))) {
       stopDownloadJobForLoginChange(job);
       await saveDownloadJob(job);
@@ -192,8 +200,38 @@ async function processDownloadQueue() {
       item.error = safeMessage(error);
     }
     updateDownloadJobCounts(job);
+    if (cancelledDownloadJobs.has(job.id)) {
+      await finishDownloadQueueCancellation(job);
+      return;
+    }
     await saveDownloadJob(job);
   }
+}
+
+async function cancelDownloadQueue() {
+  const job = await readDownloadJob();
+  if (!job || job.status !== 'RUNNING') return job;
+
+  cancelledDownloadJobs.add(job.id);
+  job.status = 'CANCELLED';
+  for (const item of job.items) {
+    if (item.status === 'PENDING') item.status = 'CANCELLED';
+  }
+  updateDownloadJobCounts(job);
+  await saveDownloadJob(job);
+  await chrome.alarms.clear(downloadQueueAlarm);
+  return job;
+}
+
+async function finishDownloadQueueCancellation(job) {
+  for (const item of job.items) {
+    if (item.status === 'PENDING') item.status = 'CANCELLED';
+  }
+  job.status = 'CANCELLED';
+  updateDownloadJobCounts(job);
+  cancelledDownloadJobs.delete(job.id);
+  await saveDownloadJob(job);
+  await chrome.alarms.clear(downloadQueueAlarm);
 }
 
 function uniqueDownloadItems(downloads) {
@@ -356,7 +394,9 @@ async function accounts(tabId) {
   const profileAccounts = new Map((profile?.accounts || []).map((account) => [account.id, account]));
   const accounts = parseAccounts(result.body).map((account) => ({
     ...account,
-    ...(profile?.holderName && !account.holderName ? { holderName: profile.holderName } : {}),
+    // A autenticação/JWT representa o titular da sessão atual e normalmente
+    // contém nome e sobrenome; a lista de contas pode trazer apenas o primeiro nome.
+    ...(profile?.holderName ? { holderName: profile.holderName } : {}),
     ...(profileAccounts.get(account.id)?.consumerUnitNumber
       ? { consumerUnitNumber: profileAccounts.get(account.id).consumerUnitNumber }
       : {}),
@@ -412,6 +452,10 @@ async function invoices(tabId, account, openOnly = false, apiOrigin = API_ORIGIN
   const url = new URL(`/api/v1/debitos/${encodeURIComponent(requireText(account))}`, apiOrigin);
   url.searchParams.set('listarEmAberto', String(openOnly));
   const result = await requestWithCurrentSession(tabId, url.toString(), apiOrigin);
+  // Para contas sem débitos/faturas, a Equatorial pode responder 404 em vez
+  // de uma lista vazia. Isso é um resultado válido e não deve derrubar as
+  // consultas das demais contas selecionadas.
+  if (result.status === 404) return [];
   assertEquatorialSuccess(result.status, 'Não foi possível consultar as faturas.');
   return parseInvoices(result.body);
 }

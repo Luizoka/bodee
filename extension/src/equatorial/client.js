@@ -131,10 +131,14 @@ export function readPortalProfile() {
     .map(optionalText).filter(Boolean).join(' ') || undefined;
   const complementaryHolderName = [complementaryData?.nome, complementaryData?.sobrenome]
     .map(optionalText).map((part) => part?.trim()).filter(Boolean).join(' ') || undefined;
-  // O JWT pertence à sessão atual; caches complementares do portal podem
-  // sobreviver a uma troca de login. A captura é usada quando o JWT não traz
-  // o nome, mas é atualizada junto com a revisão acima após cada login.
-  const holderName = jwtHolderName || complementaryHolderName || capturedHolderName;
+  // O JWT e a captura da autenticação pertencem à sessão atual. Dados
+  // complementares genéricos do portal podem sobreviver a uma troca de login,
+  // por isso só são usados como último recurso. Entre as fontes atuais,
+  // preferimos a que contém mais partes do nome para não perder o sobrenome.
+  const holderName = [jwtHolderName, capturedHolderName]
+    .filter(Boolean)
+    .sort((left, right) => right.trim().split(/\s+/).length - left.trim().split(/\s+/).length)[0]
+    || complementaryHolderName;
   const accounts = Array.isArray(jwtData?.userData?.ContasContrato)
     ? jwtData.userData.ContasContrato.map((account) => ({
       id: optionalText(account?.Numero ?? account?.numero),
@@ -247,11 +251,19 @@ export function parseAccounts(value) {
     const id = item.numero ?? item.Numero ?? item.id ?? item.contaContrato ?? item.ContaContrato ?? item.uc ?? item.Uc;
     if (typeof id !== 'string' && typeof id !== 'number') continue;
     const text = String(id);
+    const firstName = optionalString(item.nome ?? item.Nome ?? item.nomeTitular ?? item.NomeTitular)?.trim();
+    const lastName = optionalString(item.sobrenome ?? item.Sobrenome)?.trim();
+    const explicitHolderName = optionalString(
+      item.nomeTitular ?? item.NomeTitular ?? item.nomeDoTitular ?? item.nomeCliente ?? item.titular ?? item.razaoSocial,
+    )?.trim();
+    const firstNameAlreadyIncludesLastName = firstName && lastName
+      ? firstName.toLocaleLowerCase('pt-BR').endsWith(lastName.toLocaleLowerCase('pt-BR'))
+      : false;
+    const splitName = [firstName, firstNameAlreadyIncludesLastName ? undefined : lastName].filter(Boolean).join(' ') || undefined;
+    const responseFullName = lastName ? splitName : explicitHolderName || splitName;
     byId.set(text, {
       id: text,
-      holderName: optionalString(
-        item.nomeTitular ?? item.NomeTitular ?? item.nomeDoTitular ?? item.nomeCliente ?? item.titular ?? item.nome ?? item.razaoSocial,
-      ),
+      holderName: responseFullName,
       consumerUnitNumber: optionalString(
         item.ucMascarada ?? item.UcMascarada ?? item.uc ?? item.Uc ??
         item.unidadeConsumidora ?? item.codigoUnidadeConsumidora ?? item.numeroInstalacao ?? item.NumeroInstalacao,

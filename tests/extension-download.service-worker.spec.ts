@@ -121,6 +121,13 @@ describe('download da extensão', () => {
     ]);
   });
 
+  it('trata 404 como lista vazia quando a conta não possui faturas', async () => {
+    const worker = await loadWorker({ apiResponse: { status: 404 } });
+
+    await expect(worker.send({ type: 'bode.invoices', account: 'sem-debitos', openOnly: true }))
+      .resolves.toEqual({ ok: true, value: [] });
+  });
+
   it('usa a API correspondente ao estado do portal ativo', async () => {
     const worker = await loadWorker({
       activePortalUrl: 'https://ma.equatorialenergia.com.br/siteantigo/',
@@ -151,6 +158,25 @@ describe('download da extensão', () => {
         installationNumber: '2000613418',
         address: undefined,
         city: undefined,
+      }],
+    });
+  });
+
+  it('prefere o nome completo do perfil quando a lista de contas traz somente o primeiro nome', async () => {
+    const worker = await loadWorker({
+      portalAccounts: [{ numero: '003040325556', nome: 'ZELINDA' }],
+      portalProfile: {
+        holderName: 'ZELINDA COSTA DOS REIS',
+        accounts: [{ id: '003040325556', consumerUnitNumber: '3.943.879.013-08' }],
+      },
+    });
+
+    await expect(worker.send({ type: 'bode.accounts' })).resolves.toEqual({
+      ok: true,
+      value: [{
+        id: '003040325556', holderName: 'ZELINDA COSTA DOS REIS',
+        consumerUnitNumber: '3.943.879.013-08', installationNumber: undefined,
+        address: undefined, city: undefined,
       }],
     });
   });
@@ -197,9 +223,9 @@ describe('download da extensão', () => {
       consumerUnitNumber: '1:23', invoiceNumber: 'FAT/1', competence: '2026/09',
     });
 
-    expect(response).toEqual({ ok: true, value: { filename: 'BODEE/Ana _ _Silva_/UC 1_23 - Conta 000123/2026-09.pdf' } });
+    expect(response).toEqual({ ok: true, value: { filename: 'BODEE/Ana _ _Silva_/UC 1_23 - CC 000123/2026-09 - 1_23.pdf' } });
     expect(worker.downloadsDownload).toHaveBeenCalledWith(expect.objectContaining({
-      filename: 'BODEE/Ana _ _Silva_/UC 1_23 - Conta 000123/2026-09.pdf',
+      filename: 'BODEE/Ana _ _Silva_/UC 1_23 - CC 000123/2026-09 - 1_23.pdf',
     }));
   });
 
@@ -253,6 +279,27 @@ describe('download da extensão', () => {
 
     await vi.waitFor(() => expect(worker.job()).toMatchObject({ status: 'COMPLETED', complete: 1, failed: 0 }));
     expect(worker.downloadsDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancela os itens pendentes sem iniciar novos downloads', async () => {
+    const worker = await loadWorker({
+      initialJob: {
+        id: 'job-cancelado', status: 'RUNNING', portalTabId: 10, total: 2, complete: 0, failed: 0,
+        items: [
+          { account: '000123', invoiceNumber: 'FAT-1', competence: '2026/09', status: 'PENDING' },
+          { account: '000123', invoiceNumber: 'FAT-2', competence: '2026/08', status: 'PENDING' },
+        ],
+      },
+    });
+
+    await expect(worker.send({ type: 'bode.download-cancel' })).resolves.toMatchObject({
+      ok: true,
+      value: {
+        status: 'CANCELLED',
+        items: [{ status: 'CANCELLED' }, { status: 'CANCELLED' }],
+      },
+    });
+    expect(worker.downloadsDownload).not.toHaveBeenCalled();
   });
 
   it('interrompe os itens pendentes se o login mudar durante a fila', async () => {

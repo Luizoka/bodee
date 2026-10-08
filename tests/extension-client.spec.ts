@@ -66,6 +66,26 @@ describe('cliente da extensão BODEE', () => {
       }]);
   });
 
+  it('combina nome e sobrenome retornados separadamente pela Equatorial', () => {
+    expect(parseAccountList([{ numero: '003040325556', nome: 'ZELINDA', sobrenome: 'COSTA DOS REIS' }]))
+      .toEqual([{
+        id: '003040325556', holderName: 'ZELINDA COSTA DOS REIS', consumerUnitNumber: undefined,
+        installationNumber: undefined, address: undefined, city: undefined,
+      }]);
+  });
+
+  it('não deixa o primeiro nome sobrescrever um nomeTitular completo', () => {
+    expect(parseAccountList([{
+      numero: '003040325556', nome: 'ZELINDA', nomeTitular: 'ZELINDA COSTA DOS REIS',
+    }])).toEqual([expect.objectContaining({ holderName: 'ZELINDA COSTA DOS REIS' })]);
+  });
+
+  it('aceita Nome e Sobrenome e não duplica um sobrenome já presente', () => {
+    expect(parseAccountList([{
+      Numero: '003040325556', Nome: 'ZELINDA COSTA DOS REIS', Sobrenome: 'COSTA DOS REIS',
+    }])).toEqual([expect.objectContaining({ holderName: 'ZELINDA COSTA DOS REIS' })]);
+  });
+
   it('usa os dados já presentes na sessão para associar a UC correta à CC', () => {
     const tokenPayload = Buffer.from(JSON.stringify({
       userData: {
@@ -89,6 +109,43 @@ describe('cliente da extensão BODEE', () => {
     delete (globalThis as { window?: unknown }).window;
   });
 
+  it('prefere o nome capturado na autenticação atual a dados complementares antigos', () => {
+    const sessionValues = new Map([
+      ['bode.equatorial.holder-name', 'ZELINDA COSTA DOS REIS'],
+      ['dados_complementares', JSON.stringify({ nome: 'LOGIN', sobrenome: 'ANTIGO' })],
+    ]);
+    Object.assign(globalThis, {
+      window: {
+        localStorage: { getItem: () => null },
+        sessionStorage: {
+          getItem: (key: string) => sessionValues.get(key) ?? null,
+          get length() { return sessionValues.size; },
+          key: (index: number) => [...sessionValues.keys()][index] ?? null,
+        },
+      },
+    });
+
+    expect(readCurrentPortalProfile().holderName).toBe('ZELINDA COSTA DOS REIS');
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('preserva o sobrenome capturado quando o JWT contém apenas o primeiro nome', () => {
+    const tokenPayload = Buffer.from(JSON.stringify({ userData: { Nome: 'ZELINDA' } })).toString('base64url');
+    Object.assign(globalThis, {
+      window: {
+        localStorage: { getItem: (key: string) => key === 'jwt' ? `header.${tokenPayload}.signature` : null },
+        sessionStorage: {
+          getItem: (key: string) => key === 'bode.equatorial.holder-name' ? 'ZELINDA COSTA DOS REIS' : null,
+          length: 0,
+          key: () => null,
+        },
+      },
+    });
+
+    expect(readCurrentPortalProfile().holderName).toBe('ZELINDA COSTA DOS REIS');
+    delete (globalThis as { window?: unknown }).window;
+  });
+
   it('mantém apenas faturas com número e competência válidos', () => {
     expect(parseInvoiceList({
       data: {
@@ -103,7 +160,12 @@ describe('cliente da extensão BODEE', () => {
 
   it('gera um caminho de download seguro e identificável', () => {
     expect(createDownloadFilename('Ana da Silva', '123456789', '000103958237', '2026/09'))
-      .toBe('BODEE/Ana da Silva/UC 123456789 - Conta 000103958237/2026-09.pdf');
+      .toBe('BODEE/Ana da Silva/UC 123456789 - CC 000103958237/2026-09 - 123456789.pdf');
+  });
+
+  it('mantém fallbacks seguros quando titular e UC não são informados', () => {
+    expect(createDownloadFilename(undefined, undefined, '000103958237', '2026/09'))
+      .toBe('BODEE/Titular não informado/CC 000103958237/2026-09.pdf');
   });
 
   it('traduz sessões expiradas e recusas do portal em mensagens amigáveis', () => {
@@ -117,7 +179,7 @@ describe('manifesto da extensão', () => {
   it('usa Manifest V3, ícones oficiais e hosts restritos', async () => {
     const manifest = parseManifest(await readFile(join(process.cwd(), 'extension', 'manifest.json'), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.0.8');
+    expect(manifest.version).toBe('1.0.9');
     expect(manifest.permissions).toEqual(['scripting', 'downloads', 'storage', 'alarms']);
     expect(manifest.host_permissions).toEqual([
       'https://pa.equatorialenergia.com.br/*',

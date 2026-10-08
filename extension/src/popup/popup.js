@@ -1,4 +1,6 @@
 /* global chrome, document */
+import { queryInvoicesByAccount } from './invoice-query.js';
+
 const MOCK_MODE = globalThis.__BODEE_MOCK_MODE__ === true;
 let mockRequest;
 const status = document.querySelector('#session-status');
@@ -25,6 +27,7 @@ const downloadProgressBar = document.querySelector('#download-progress-bar');
 const downloadQueueItems = document.querySelector('#download-queue-items');
 const downloadQueueToggle = document.querySelector('#download-queue-toggle');
 const downloadQueueNote = document.querySelector('#download-queue-note');
+const downloadQueueCancel = document.querySelector('#download-queue-cancel');
 const message = document.querySelector('#message');
 const popupStateStorageKey = 'bode.popup-state';
 const downloadJobStorageKey = 'bode.download-job';
@@ -54,6 +57,7 @@ accountsToggle.addEventListener('click', () => toggleSection(accountsToggle, acc
 invoicesToggle.addEventListener('click', () => toggleSection(invoicesToggle, invoicesContent, 'competências'));
 download.addEventListener('click', () => void downloadSelected());
 downloadQueueToggle.addEventListener('click', () => void toggleDownloadQueue());
+downloadQueueCancel.addEventListener('click', () => void cancelDownloadQueue());
 if (!MOCK_MODE) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && changes[downloadJobStorageKey]) renderDownloadJob(changes[downloadJobStorageKey].newValue);
@@ -126,13 +130,19 @@ async function refreshInvoices() {
 
   try {
     openInvoicesOnly.disabled = true;
-    const results = await Promise.all(selectedAccounts.map(async (account) => [
-      account,
-      await request('bode.invoices', { account, openOnly }),
-    ]));
+    const { results, failures } = await queryInvoicesByAccount(
+      selectedAccounts,
+      (account) => request('bode.invoices', { account, openOnly }),
+    );
     if (selectedAccounts.join() !== checkedValues(accounts).join() || openOnly !== openInvoicesOnly.checked) return;
     invoicesByAccount = new Map(results); const competences = renderInvoices(results, selectedAccounts);
-    if (!competences.length) showMessage(
+    if (failures.length === selectedAccounts.length) {
+      const firstError = failures[0]?.error;
+      showMessage(firstError instanceof Error ? firstError.message : 'Não foi possível consultar as faturas.', 'error');
+    } else if (failures.length) {
+      const label = failures.length === 1 ? '1 unidade não pôde ser consultada' : `${failures.length} unidades não puderam ser consultadas`;
+      showMessage(`${label}; as demais foram carregadas normalmente.`, 'error');
+    } else if (!competences.length) showMessage(
       openOnly
         ? 'Nenhuma fatura em aberto para as unidades selecionadas.'
         : 'Nenhuma fatura disponível para as unidades selecionadas.',
@@ -233,9 +243,10 @@ function renderDownloadJob(job) {
   downloadJob = job;
   if (!job) { downloadProgress.hidden = true; downloadQueueNote.hidden = true; downloadProgress.classList.remove('is-complete'); downloadQueueItems.replaceChildren(); updateButtons(); return; }
   const processed = job.complete + job.failed;
-  const isComplete = job.status !== 'RUNNING' && !job.failed;
+  const isComplete = job.status === 'COMPLETED' && !job.failed;
   downloadProgress.classList.toggle('is-complete', isComplete);
   downloadQueueNote.hidden = job.status !== 'RUNNING';
+  downloadQueueCancel.disabled = job.status !== 'RUNNING';
   setDownloadQueueMinimized(job.status === 'RUNNING' && downloadQueueMinimized);
   if (job.status === 'RUNNING') updateDownloadProgress(processed, job.total);
   else downloadProgress.hidden = false;
@@ -243,6 +254,9 @@ function renderDownloadJob(job) {
   if (job.status === 'RUNNING') {
     downloadProgressLabel.textContent = `Baixando faturas (${job.items.find((item) => item.status === 'DOWNLOADING')?.competence || 'aguardando'})`;
     clearMessage();
+  } else if (job.status === 'CANCELLED') {
+    downloadProgressLabel.textContent = 'Download cancelado';
+    showMessage(`${job.complete} ${job.complete === 1 ? 'fatura foi baixada' : 'faturas foram baixadas'} antes do cancelamento.`, 'error');
   } else {
     const unavailableMessage = job.unavailable ? ` ${job.unavailable} combinação(ões) sem fatura foram ignoradas.` : '';
     const failureMessage = job.failed ? ` ${job.failed} falharam.` : '';
@@ -251,6 +265,16 @@ function renderDownloadJob(job) {
     showMessage(`${downloadedMessage}${unavailableMessage}${failureMessage}`, job.failed ? 'error' : 'success');
   }
   updateButtons();
+}
+
+async function cancelDownloadQueue() {
+  downloadQueueCancel.disabled = true;
+  try {
+    renderDownloadJob(await request('bode.download-cancel'));
+  } catch (error) {
+    showMessage(error.message, 'error');
+    downloadQueueCancel.disabled = false;
+  }
 }
 
 function setDownloadQueueMinimized(minimized) {
@@ -278,7 +302,7 @@ function toggleSection(toggle, content, name) {
 }
 
 function renderDownloadQueueItems(items) {
-  const statusLabels = { PENDING: 'Na fila', DOWNLOADING: 'Baixando', COMPLETED: 'Baixada', FAILED: 'Erro' };
+  const statusLabels = { PENDING: 'Na fila', DOWNLOADING: 'Baixando', COMPLETED: 'Baixada', FAILED: 'Erro', CANCELLED: 'Cancelada' };
   downloadQueueItems.replaceChildren();
   for (const item of items) {
     const label = [item.consumerUnitNumber ? `UC ${item.consumerUnitNumber}` : `Conta ${item.account}`, item.competence].join(' — ');

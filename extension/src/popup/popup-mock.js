@@ -60,6 +60,10 @@ export async function mockRequest(type, payload = {}) {
       }));
       return createMockJob(items.length ? items : initialQueue);
     }
+    case 'bode.download-cancel': return {
+      ...createMockJob(initialQueue.map((item) => item.status === 'PENDING' ? { ...item, status: 'CANCELLED' } : item)),
+      status: 'CANCELLED',
+    };
     case 'bode.open-portal': return undefined;
     default: throw new Error(`Ação mock não suportada: ${type}`);
   }

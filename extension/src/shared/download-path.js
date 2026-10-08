@@ -1,9 +1,13 @@
 export function downloadFilename(holderName, consumerUnitNumber, account, competence) {
   const holderDirectory = safePathSegment(holderName, 'Titular não informado');
   const accountDirectory = consumerUnitNumber
-    ? safePathSegment(`UC ${consumerUnitNumber} - Conta ${account}`, 'Conta não informada')
-    : safePathSegment(`Conta ${account}`, 'Conta não informada');
-  return `BODEE/${holderDirectory}/${accountDirectory}/${safeFilename(competence).replace('/', '-')}.pdf`;
+    ? safePathSegment(`UC ${consumerUnitNumber} - CC ${account}`, 'CC não informada')
+    : safePathSegment(`CC ${account}`, 'CC não informada');
+  const competenceFilename = safeFilename(competence).replace('/', '-');
+  const invoiceFilename = consumerUnitNumber
+    ? `${competenceFilename} - ${safeFilename(consumerUnitNumber)}`
+    : competenceFilename;
+  return `BODEE/${holderDirectory}/${accountDirectory}/${invoiceFilename}.pdf`;
 }
 
 function safeFilename(value) {
