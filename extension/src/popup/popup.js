@@ -15,6 +15,7 @@ const selectAllAccounts = document.querySelector('#select-all-accounts');
 const selectAllInvoices = document.querySelector('#select-all-invoices');
 const accountsContent = document.querySelector('#accounts-content');
 const invoicesContent = document.querySelector('#invoices-content');
+const accountHolder = document.querySelector('#account-holder');
 const accountsToggle = document.querySelector('#accounts-toggle');
 const invoicesToggle = document.querySelector('#invoices-toggle');
 const selectedAccountsCount = document.querySelector('#selected-accounts-count');
@@ -179,10 +180,15 @@ async function downloadSelected() {
 
 function renderAccounts(availableAccounts, selectedAccounts = new Set()) {
   accounts.replaceChildren(); accountsById = new Map(); accountSearch.value = '';
+  const holderNames = [...new Set(availableAccounts
+    .map((item) => typeof item.holderName === 'string' ? item.holderName.trim() : '')
+    .filter(Boolean))];
+  accountHolder.textContent = holderNames.join(' · ');
+  accountHolder.hidden = holderNames.length === 0;
   for (const item of availableAccounts) {
     const place = formatAccountPlace(item.address, item.city);
-    const accountDescription = item.consumerUnitNumber ? `UC ${item.consumerUnitNumber} — Conta ${item.id}` : `Conta ${item.id}`;
-    const description = [item.holderName, accountDescription, place].filter(Boolean).join(' — ');
+    const accountDescription = item.consumerUnitNumber ? `UC ${item.consumerUnitNumber}` : undefined;
+    const description = [accountDescription, item.id ? `C ${item.id}` : undefined, place].filter(Boolean).join(' - ');
     const label = document.createElement('label'); label.className = 'choice';
     label.dataset.search = normalizeSearch([item.holderName, item.consumerUnitNumber, item.id, item.address, item.city].filter(Boolean).join(' '));
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = item.id; checkbox.checked = selectedAccounts.has(item.id);

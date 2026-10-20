@@ -23,6 +23,7 @@ button:not(.text-button):disabled { cursor: default; background: #94a3b8; box-sh
 .reload-button.is-loading span { display: inline-block; animation: spin .8s linear infinite; }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; }
 .section-heading label { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px; }
+.account-holder { margin: 10px 0 4px; color: #17212b; font-size: 12px; font-weight: 800; line-height: 1.25; }
 .section-actions { display: inline-flex; align-items: center; gap: 8px; }
 button.section-toggle { display: inline-flex; flex: 0 0 18px; align-items: center; justify-content: center; width: 18px; height: 18px; min-height: 18px; margin: 0; padding: 0; border-radius: 0; color: #64748b; background: transparent; box-shadow: none; }
 button.section-toggle::before { display: block; box-sizing: border-box; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; content: ''; transform-origin: center; }

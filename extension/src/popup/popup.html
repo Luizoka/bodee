@@ -21,12 +21,13 @@
         <button id="open-portal" type="button" hidden>ABRIR PORTAL DA EQUATORIAL</button>
         <section id="invoices-section" hidden>
           <div class="selection-section">
+            <p id="account-holder" class="account-holder" hidden></p>
             <div class="section-heading">
               <label><svg class="label-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21h.01M15 11h.01" /></svg><span>Unidades</span><span id="selected-accounts-count" class="selected-count"></span></label>
               <span class="section-actions"><button id="select-all-accounts" type="button" class="text-button">Todas</button><button id="accounts-toggle" class="section-toggle" type="button" aria-controls="accounts-content" aria-expanded="true" aria-label="Minimizar unidades" title="Minimizar unidades"></button></span>
             </div>
             <div id="accounts-content" class="selection-content">
-              <input id="account-search" class="account-search" type="search" placeholder="Pesquisar por UC, conta ou titular" aria-label="Pesquisar unidades consumidoras" autocomplete="off" />
+              <input id="account-search" class="account-search" type="search" placeholder="Pesquisar por UC ou conta" aria-label="Pesquisar unidades consumidoras" autocomplete="off" />
               <div id="accounts" class="choices"></div>
             </div>
           </div>
