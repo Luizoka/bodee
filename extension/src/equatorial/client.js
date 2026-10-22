@@ -295,6 +295,10 @@ export function parseInvoices(value) {
     .map((invoice) => ({
       invoiceNumber: String(invoice?.numeroFatura ?? ''),
       competence: typeof invoice?.competencia === 'string' ? invoice.competencia : '',
+      // A listagem que já abastece o popup informa explicitamente null
+      // enquanto a segunda via ainda não foi gerada. Campo ausente não é
+      // tratado como indisponível para manter compatibilidade entre estados.
+      available: invoice?.codigoBarras !== null,
     }))
     .filter((invoice) => invoice.invoiceNumber && invoice.competence);
 }

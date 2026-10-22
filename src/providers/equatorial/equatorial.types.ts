@@ -93,7 +93,7 @@ export interface EquatorialInvoice {
   valor?: string | undefined;
   dataVencimento?: string | undefined;
   dataPagamento?: string | null | undefined;
-  codigoBarras?: string | undefined;
+  codigoBarras?: string | null | undefined;
   notaFiscal?: string | undefined;
 }
 

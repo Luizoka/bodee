@@ -17,7 +17,7 @@ const invoiceSchema = z
     valor: stringValue.optional(),
     dataVencimento: z.string().optional(),
     dataPagamento: z.string().nullable().optional(),
-    codigoBarras: z.string().optional(),
+    codigoBarras: z.string().nullable().optional(),
     notaFiscal: z.string().optional(),
   })
   .loose();

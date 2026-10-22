@@ -13,7 +13,9 @@ export function selectInvoiceByCompetence(
 ): EquatorialInvoice {
   const invoice = invoices.find((item) => item.competencia === competence);
 
-  if (!invoice) {
+  // A API usa null para uma fatura listada cuja segunda via ainda não foi
+  // gerada. Campo ausente continua aceito para compatibilidade entre estados.
+  if (!invoice || invoice.codigoBarras === null) {
     throw new EquatorialError(
       EquatorialErrorCode.INVOICE_NOT_AVAILABLE,
       `A fatura da competência ${competence} ainda não está disponível.`,

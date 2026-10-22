@@ -155,7 +155,19 @@ describe('cliente da extensão BODEE', () => {
           { numeroFatura: 456, competencia: null },
         ],
       },
-    })).toEqual([{ invoiceNumber: '123', competence: '2026/09' }]);
+    })).toEqual([{ invoiceNumber: '123', competence: '2026/09', available: true }]);
+  });
+
+  it('marca como indisponível somente quando o código de barras vem explicitamente null', () => {
+    expect(parseInvoiceList({
+      data: { faturas: [
+        { numeroFatura: 123, competencia: '2026/09', codigoBarras: null },
+        { numeroFatura: 456, competencia: '2026/08' },
+      ] },
+    })).toEqual([
+      { invoiceNumber: '123', competence: '2026/09', available: false },
+      { invoiceNumber: '456', competence: '2026/08', available: true },
+    ]);
   });
 
   it('gera um caminho de download seguro e identificável', () => {

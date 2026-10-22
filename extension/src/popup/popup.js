@@ -158,10 +158,13 @@ async function downloadSelected() {
   const selectedCompetences = checkedValues(invoices);
   const items = selectedAccounts.flatMap((account) => selectedCompetences.flatMap((competence) => {
     const invoice = invoicesByAccount.get(account)?.find((item) => item.competence === competence);
-    return invoice ? [{ account, invoice }] : [];
+    return invoice?.available !== false ? (invoice ? [{ account, invoice }] : []) : [];
   }));
   const unavailable = selectedAccounts.length * selectedCompetences.length - items.length;
-  if (!items.length) return;
+  if (!items.length) {
+    showMessage('As faturas selecionadas ainda não estão disponíveis para download.', 'error');
+    return;
+  }
 
   download.disabled = true; clearMessage();
   const downloads = items.map(({ account, invoice }) => ({

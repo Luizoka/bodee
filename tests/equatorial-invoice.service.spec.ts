@@ -30,6 +30,15 @@ describe('selectInvoiceByCompetence', () => {
     }
   });
 
+  it('não tenta baixar quando a API informa código de barras null', () => {
+    expect(() => selectInvoiceByCompetence([
+      { numeroFatura: 'pending', competencia: '2026/09', codigoBarras: null },
+    ], '2026/09')).toThrow(expect.objectContaining({
+      code: EquatorialErrorCode.INVOICE_NOT_AVAILABLE,
+      retryable: true,
+    }));
+  });
+
   it('lista competências sem expor outros dados da fatura', () => {
     expect(listAvailableCompetences(invoices)).toEqual(['2026/07', '2026/08']);
   });

@@ -26,7 +26,7 @@ describe('EquatorialApiService', () => {
         JSON.stringify({
           data: {
             faturas: [
-              { numeroFatura: 123, competencia: '2026/08', valor: '10.00' },
+              { numeroFatura: 123, competencia: '2026/08', valor: '10.00', codigoBarras: null },
             ],
           },
         }),
@@ -43,7 +43,7 @@ describe('EquatorialApiService', () => {
     );
 
     expect(result).toEqual([
-      { numeroFatura: '123', competencia: '2026/08', valor: '10.00' },
+      { numeroFatura: '123', competencia: '2026/08', valor: '10.00', codigoBarras: null },
     ]);
     expect(String(request.mock.calls[0]?.[0])).toContain(
       'listarEmAberto=false',
