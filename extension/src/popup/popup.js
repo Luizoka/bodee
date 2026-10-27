@@ -79,6 +79,7 @@ async function initializePopup() {
 }
 
 async function initializeMockPopup() {
+  setCompactPopup(false);
   const mockStatus = await request('bode.status');
   activeProfileKey = mockStatus.profileKey;
   status.textContent = '● Modo de teste local'; status.className = 'status connected'; loadAccounts.disabled = false;
@@ -95,6 +96,7 @@ async function refreshStatus() {
   try {
     const result = await request('bode.status');
     if (result.authenticated) {
+      setCompactPopup(false);
       activeProfileKey = result.profileKey;
       status.textContent = '● Sessão conectada'; status.className = 'status connected'; loadAccounts.disabled = false;
       openPortal.hidden = true;
@@ -102,12 +104,18 @@ async function refreshStatus() {
       renderDownloadJob(await request('bode.download-status'));
       return;
     }
-    status.textContent = 'Você ainda não está conectado à Equatorial.'; status.className = 'status disconnected'; loadAccounts.disabled = true;
+    setCompactPopup(true);
+    status.textContent = 'Faça login no portal da Equatorial para suas contas aparecerem.'; status.className = 'status disconnected'; loadAccounts.disabled = true;
     openPortal.hidden = false;
   } catch (error) {
+    setCompactPopup(true);
     status.textContent = 'Não foi possível verificar a sessão da Equatorial.'; status.className = 'status disconnected'; openPortal.hidden = false;
     showMessage(error.message, 'error');
   }
+}
+
+function setCompactPopup(compact) {
+  document.documentElement.classList.toggle('compact-popup', compact);
 }
 
 async function refreshAccounts(refreshProfile = false) {
