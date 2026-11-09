@@ -55,11 +55,13 @@ export async function mockRequest(type, payload = {}) {
     case 'bode.download-queue': {
       const items = payload.downloads.map((item, index) => ({
         ...item,
+        id: `mock-${index}`,
         status: ['COMPLETED', 'DOWNLOADING', 'PENDING', 'FAILED'][index % 4],
         ...(index % 4 === 3 ? { error: 'Falha simulada para teste' } : {}),
       }));
       return createMockJob(items.length ? items : initialQueue);
     }
+    case 'bode.download-retry': return createMockJob(initialQueue.map((item) => item.id === payload.itemId ? { ...item, status: 'DOWNLOADING', error: undefined } : item));
     case 'bode.download-cancel': return {
       ...createMockJob(initialQueue.map((item) => item.status === 'PENDING' ? { ...item, status: 'CANCELLED' } : item)),
       status: 'CANCELLED',

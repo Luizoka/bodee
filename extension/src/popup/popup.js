@@ -59,6 +59,10 @@ invoicesToggle.addEventListener('click', () => toggleSection(invoicesToggle, inv
 download.addEventListener('click', () => void downloadSelected());
 downloadQueueToggle.addEventListener('click', () => void toggleDownloadQueue());
 downloadQueueCancel.addEventListener('click', () => void cancelDownloadQueue());
+downloadQueueItems.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-retry-item]');
+  if (button) void retryDownloadItem(button.dataset.retryItem, button);
+});
 if (!MOCK_MODE) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'session' && changes[downloadJobStorageKey]) renderDownloadJob(changes[downloadJobStorageKey].newValue);
@@ -294,6 +298,18 @@ async function cancelDownloadQueue() {
   }
 }
 
+async function retryDownloadItem(itemId, button) {
+  button.disabled = true;
+  button.textContent = 'Tentando…';
+  try {
+    renderDownloadJob(await request('bode.download-retry', { itemId }));
+  } catch (error) {
+    showMessage(error.message, 'error');
+    button.disabled = false;
+    button.textContent = 'Tente novamente';
+  }
+}
+
 function setDownloadQueueMinimized(minimized) {
   downloadProgress.classList.toggle('is-minimized', minimized);
   const action = minimized ? 'Expandir' : 'Minimizar';
@@ -326,8 +342,15 @@ function renderDownloadQueueItems(items) {
     const row = document.createElement('li');
     const name = document.createElement('span'); name.textContent = label;
     const state = document.createElement('span'); state.className = `queue-status ${item.status === 'FAILED' ? 'failed' : ''}`;
-    state.textContent = item.status === 'FAILED' && item.error ? `${statusLabels[item.status]}: ${item.error}` : statusLabels[item.status];
-    row.append(name, state); downloadQueueItems.append(row);
+    state.textContent = statusLabels[item.status];
+    if (item.status === 'FAILED' && item.error) { state.title = item.error; state.setAttribute('aria-label', `Erro: ${item.error}`); }
+    row.append(name, state);
+    if (item.status === 'FAILED') {
+      const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'text-button queue-retry';
+      retry.textContent = 'Tente novamente'; retry.dataset.retryItem = item.id; retry.setAttribute('aria-label', `Tentar novamente ${label}`);
+      row.append(retry);
+    }
+    downloadQueueItems.append(row);
   }
 }
 

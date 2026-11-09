@@ -76,11 +76,28 @@ async function handleMessage(message) {
       return readDownloadJob();
     case 'bode.download-cancel':
       return cancelDownloadQueue();
+    case 'bode.download-retry':
+      return retryDownloadItem(message.itemId);
     case 'bode.last-diagnostic':
       return readLastDiagnostic();
     default:
       throw new Error('Operação desconhecida.');
   }
+}
+
+async function retryDownloadItem(itemId) {
+  const job = await readDownloadJob();
+  if (!job || job.status === 'RUNNING') throw new Error('Aguarde a fila atual terminar.');
+  const item = job.items.find((candidate) => candidate.id === itemId && candidate.status === 'FAILED');
+  if (!item) throw new Error('Este item não está disponível para nova tentativa.');
+  item.status = 'PENDING';
+  delete item.error;
+  job.status = 'RUNNING';
+  updateDownloadJobCounts(job);
+  await saveDownloadJob(job);
+  await chrome.alarms.create(downloadQueueAlarm, { periodInMinutes: 0.5 });
+  void scheduleDownloadQueueProcessing();
+  return job;
 }
 
 async function startDownloadQueue(portalTabId, downloads, apiOrigin = API_ORIGIN) {
@@ -105,7 +122,7 @@ async function startDownloadQueue(portalTabId, downloads, apiOrigin = API_ORIGIN
       total: items.length,
       complete: 0,
       failed: 0,
-      items: items.map((item) => ({ ...item, status: 'PENDING' })),
+      items: items.map((item) => ({ ...item, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, status: 'PENDING' })),
     };
     await saveDownloadJob(job);
     await chrome.alarms.create(downloadQueueAlarm, { periodInMinutes: 0.5 });
